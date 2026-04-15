@@ -145,8 +145,8 @@ def banana_log_prob(pos, interp, teff_obs, lum_obs, teff_sigma, lum_sigma,
     age_col = 'age' if 'age' in star.index else 'Age(Gyr)'
     if age_col in star.index:
         age = float(star[age_col])
-        if age > AGE_UNIVERSE or age <= 0:
-            return -np.inf, None
+        #if age > AGE_UNIVERSE or age <= 0:
+        #    return -np.inf, None
 
     # ── Gaussian log-likelihood ───────────────────────────────────────────────
     teff_model = float(star['teff'])
@@ -547,7 +547,7 @@ if __name__ == '__main__':
     # ── Load catalogue ────────────────────────────────────────────────────────
     fit_df = pd.read_csv('results/fit_results.csv')
     stars  = fit_df[fit_df['skip_reason'] == 'none'].copy()
-    PLATINUM_LOSS_CUTOFF = 5.0
+    PLATINUM_LOSS_CUTOFF = 50000.0
     stars_to_run = stars[
         stars['fit_loss'].fillna(999) < PLATINUM_LOSS_CUTOFF].reset_index(drop=True)
     print(f"Catalogue: {len(stars_to_run)} stars eligible for banana MCMC\n")
