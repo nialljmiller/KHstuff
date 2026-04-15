@@ -114,7 +114,7 @@ for star_id, output in bananas.items():
 
     # Physical filter
     ok = (np.isfinite(feh_samples) & np.isfinite(age_samples) &
-          (age_samples > 0) & (age_samples <= AGE_UNIVERSE))
+          (age_samples > 0) )
     feh = feh_samples[ok]
     age = age_samples[ok]
 

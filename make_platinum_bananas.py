@@ -141,12 +141,6 @@ def banana_log_prob(pos, interp, teff_obs, lum_obs, teff_sigma, lum_sigma,
     if star is None or star.isna().any():
         return -np.inf, None
 
-    # ── Physical age prior ────────────────────────────────────────────────────
-    age_col = 'age' if 'age' in star.index else 'Age(Gyr)'
-    if age_col in star.index:
-        age = float(star[age_col])
-        #if age > AGE_UNIVERSE or age <= 0:
-        #    return -np.inf, None
 
     # ── Gaussian log-likelihood ───────────────────────────────────────────────
     teff_model = float(star['teff'])

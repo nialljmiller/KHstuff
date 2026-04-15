@@ -104,7 +104,7 @@ for fname in chain_files:
 
     feh_all = output['initial_met'].values
     age_all = output[age_col].values
-    ok      = np.isfinite(feh_all) & np.isfinite(age_all) & (age_all > 0) & (age_all <= AGE_UNIVERSE)
+    ok      = np.isfinite(feh_all) & np.isfinite(age_all) & (age_all > 0) 
     feh     = feh_all[ok]
     age     = age_all[ok]
 
