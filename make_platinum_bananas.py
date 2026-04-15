@@ -101,36 +101,18 @@ def classify_star(logg):
     if np.isnan(logg):
         return 'unknown'
     return 'RGB' if (logg < 2.2 or logg > 3.0) else 'clump'
+# ── Replace the existing banana_log_prob function in make_platinum_bananas.py ─
+# Add AGE_UNIVERSE near the top with other constants:
 
-# ── Constrained 3D log-probability function ───────────────────────────────────
+AGE_UNIVERSE = 13.8   # Gyr — hard physical prior
+
+# Then replace the function body. The only change is the age check
+# after the interpolation call:
+
 def banana_log_prob(pos, interp, teff_obs, lum_obs, teff_sigma, lum_sigma,
                     bounds, ml_lo, ml_hi):
-    '''
-    Log-probability for the constrained banana MCMC.
-
-    Parameters
-    ----------
-    pos : array (3,)
-        Walker position: [initial_mass, initial_met, eep]
-    interp : StarGridInterpolator
-    teff_obs, lum_obs : float
-        Observed teff (K) and log(L/L☉)
-    teff_sigma, lum_sigma : float
-        Uncertainties on teff and lum
-    bounds : dict
-        Grid bounds: {param: (lo, hi)}
-    ml_lo, ml_hi : float
-        Grid bounds on mixing_length (passed separately for compute_ML)
-
-    Returns
-    -------
-    log_prob : float
-    star : pd.Series or None
-        Interpolated stellar model (returned as emcee blob)
-    '''
     initial_mass, initial_met, eep = pos
 
-    # ── Hard prior: walker must be inside the grid ────────────────────────────
     mass_lo, mass_hi = bounds['initial_mass']
     met_lo,  met_hi  = bounds['initial_met']
     eep_lo,  eep_hi  = bounds['eep']
@@ -140,23 +122,17 @@ def banana_log_prob(pos, interp, teff_obs, lum_obs, teff_sigma, lum_sigma,
             eep_lo  < eep          < eep_hi):
         return -np.inf, None
 
-    # ── Derive constrained parameters from initial_met ────────────────────────
     alpha_fe      = 0.0
     initial_he    = compute_y(initial_met)
     mixing_length = compute_ML(initial_met, ml_lo, ml_hi)
 
-    # Also check initial_he is inside its grid bounds
     he_lo, he_hi = bounds['initial_he']
     if not (he_lo <= initial_he <= he_hi):
         return -np.inf, None
 
-    # ── Assemble full 6D grid index ───────────────────────────────────────────
-    # Index order: initial_mass, initial_met, alpha_fe, initial_he,
-    #              mixing_length, eep  (matches JT2017t12 index)
     full_index = (initial_mass, initial_met, alpha_fe,
                   initial_he, mixing_length, eep)
 
-    # ── Interpolate ───────────────────────────────────────────────────────────
     try:
         star = interp.get_star_eep(full_index)
     except Exception:
@@ -165,7 +141,14 @@ def banana_log_prob(pos, interp, teff_obs, lum_obs, teff_sigma, lum_sigma,
     if star is None or star.isna().any():
         return -np.inf, None
 
-    # ── Gaussian log-likelihood in teff and lum ───────────────────────────────
+    # ── Physical age prior ────────────────────────────────────────────────────
+    age_col = 'age' if 'age' in star.index else 'Age(Gyr)'
+    if age_col in star.index:
+        age = float(star[age_col])
+        if age > AGE_UNIVERSE or age <= 0:
+            return -np.inf, None
+
+    # ── Gaussian log-likelihood ───────────────────────────────────────────────
     teff_model = float(star['teff'])
     lum_model  = float(star['lum'])
 
