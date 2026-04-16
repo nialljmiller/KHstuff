@@ -47,7 +47,7 @@ MH_MAX      = None     # dex — no upper metallicity cut
 LUM_MIN     = None     # log(L/Lsun) — no lower luminosity cut
 LUM_MAX     = None     # log(L/Lsun) — no upper luminosity cut
 AGE_MIN     = None     # Gyr — no lower age cut on samples
-AGE_MAX     = None     # Gyr — no upper age cut on samples
+AGE_MAX     = 20       # Gyr — no upper age cut on samples
 MIN_SAMPLES = 100      # minimum valid MCMC samples to process a star
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -318,3 +318,38 @@ print(table[['star_id', 'mh_obs', 'age_median',
              'age_err_lo', 'age_err_hi']].to_string(index=False))
 print(f"\nSaved: results/posteriors/age_posterior_table.csv")
 print("Done.")
+
+
+
+# ── Combined age distribution ─────────────────────────────────────────────────
+print("Plotting combined age distribution...")
+all_ages = np.concatenate([r['age_posterior'] for r in results])
+
+fig, ax = plt.subplots(figsize=(6, 4.5))
+
+ax.hist(all_ages, bins=50, density=True,
+        color='steelblue', alpha=0.4, edgecolor='white', lw=0.3,
+        label=f'N={len(results)} stars')
+
+from scipy.stats import gaussian_kde
+kde = gaussian_kde(all_ages, bw_method=0.15)
+age_grid = np.linspace(0, all_ages.max() * 1.05, 500)
+ax.plot(age_grid, kde(age_grid), '-', color='steelblue', lw=2.0)
+
+ax.axvline(np.median(all_ages), color='k', lw=1.5, ls='--',
+           label=f'Median: {np.median(all_ages):.1f} Gyr')
+
+ax.set_xlabel('Age (Gyr)', fontsize=12)
+ax.set_ylabel('Probability density', fontsize=12)
+ax.set_xlim(left=0)
+ax.set_ylim(bottom=0)
+ax.xaxis.set_minor_locator(AutoMinorLocator())
+ax.yaxis.set_minor_locator(AutoMinorLocator())
+ax.legend(fontsize=9)
+
+fig.savefig('results/posteriors/combined_age_distribution.png')
+fig.savefig('results/posteriors/combined_age_distribution.pdf')
+plt.close(fig)
+print(f"  Saved: results/posteriors/combined_age_distribution.png")
+print(f"  Combined median age: {np.median(all_ages):.1f} Gyr")
+print(f"  16th–84th pct: {np.percentile(all_ages,16):.1f}–{np.percentile(all_ages,84):.1f} Gyr")
