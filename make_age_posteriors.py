@@ -38,9 +38,9 @@ os.makedirs('results/posteriors', exist_ok=True)
 # Set to None to disable a cut entirely.
 # ══════════════════════════════════════════════════════════════════════════════
 
-TEFF_MIN    = None     # K  — no lower Teff cut
+TEFF_MIN    = 3700     # K  — no lower Teff cut
 TEFF_MAX    = 5500.0   # K  — exclude hot non-RGB outliers
-LOGG_MIN    = 0.8      # dex — exclude near-TRGB (uninformative bananas)
+LOGG_MIN    = 1.0      # dex — exclude near-TRGB (uninformative bananas)
 LOGG_MAX    = None     # dex — no upper logg cut
 MH_MIN      = None     # dex — no lower metallicity cut
 MH_MAX      = None     # dex — no upper metallicity cut
