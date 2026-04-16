@@ -4,15 +4,6 @@ make_age_posteriors.py  —  Step 4
 For each valid RGB banana star, weight the MCMC samples by the Zoccali et al.
 (2017) bulge MDF and produce an age posterior.
 
-Method
-------
-The banana gives samples from p(age, [Fe/H] | Teff, lum).
-The MDF gives p([Fe/H]) for the bulge sightline (l,b) = (0, -1).
-The age posterior is p(age) proportional to the integral of
-p(age | [Fe/H]) * p_MDF([Fe/H]) d[Fe/H].
-With MCMC samples this reduces to weighting each sample by the MDF KDE
-at that sample's initial_met, then histogramming the weighted ages.
-
 Inputs
 ------
 zocalli.dat                    Zoccali et al. (2017). Only LRp0m1 rows used.
@@ -41,6 +32,25 @@ import warnings
 warnings.filterwarnings('ignore')
 
 os.makedirs('results/posteriors', exist_ok=True)
+
+# ══════════════════════════════════════════════════════════════════════════════
+# SCIENCE SELECTION CUTS
+# Set to None to disable a cut entirely.
+# ══════════════════════════════════════════════════════════════════════════════
+
+TEFF_MIN    = None     # K  — no lower Teff cut
+TEFF_MAX    = 5500.0   # K  — exclude hot non-RGB outliers
+LOGG_MIN    = 0.8      # dex — exclude near-TRGB (uninformative bananas)
+LOGG_MAX    = None     # dex — no upper logg cut
+MH_MIN      = None     # dex — no lower metallicity cut
+MH_MAX      = None     # dex — no upper metallicity cut
+LUM_MIN     = None     # log(L/Lsun) — no lower luminosity cut
+LUM_MAX     = None     # log(L/Lsun) — no upper luminosity cut
+AGE_MIN     = None     # Gyr — no lower age cut on samples
+AGE_MAX     = None     # Gyr — no upper age cut on samples
+MIN_SAMPLES = 100      # minimum valid MCMC samples to process a star
+
+# ══════════════════════════════════════════════════════════════════════════════
 
 # ── ApJ plot style ────────────────────────────────────────────────────────────
 plt.rcParams.update({
@@ -99,6 +109,17 @@ def get_age_col(df):
 def classify_star(logg):
     return 'RGB' if (float(logg) < 2.2 or float(logg) > 3.0) else 'clump'
 
+def passes_cuts(teff, logg, mh, lum):
+    if TEFF_MIN  is not None and teff < TEFF_MIN:   return False
+    if TEFF_MAX  is not None and teff >= TEFF_MAX:  return False
+    if LOGG_MIN  is not None and logg < LOGG_MIN:   return False
+    if LOGG_MAX  is not None and logg > LOGG_MAX:   return False
+    if MH_MIN    is not None and mh   < MH_MIN:     return False
+    if MH_MAX    is not None and mh   > MH_MAX:     return False
+    if LUM_MIN   is not None and lum  < LUM_MIN:    return False
+    if LUM_MAX   is not None and lum  > LUM_MAX:    return False
+    return True
+
 def median_banana(feh, age, n_bins=25):
     bins = np.linspace(-1.05, 0.45, n_bins + 1)
     mids, meds, lo, hi = [], [], [], []
@@ -113,8 +134,7 @@ def median_banana(feh, age, n_bins=25):
     return np.array(mids), np.array(meds), np.array(lo), np.array(hi)
 
 # ── 3. Compute posteriors ─────────────────────────────────────────────────────
-TEFF_MAX = 5500.0
-results  = []
+results = []
 
 for star_id, output in bananas.items():
     teff_obs = float(output['teff_obs'].iloc[0])
@@ -125,7 +145,9 @@ for star_id, output in bananas.items():
                      if 'stellar_class' in output.columns
                      else classify_star(logg_obs))
 
-    if stellar_class != 'RGB' or teff_obs >= TEFF_MAX:
+    if stellar_class != 'RGB':
+        continue
+    if not passes_cuts(teff_obs, logg_obs, mh_obs, lum_obs):
         continue
 
     age_col = get_age_col(output)
@@ -135,10 +157,12 @@ for star_id, output in bananas.items():
     feh_s = output['initial_met'].values
     age_s = output[age_col].values
     ok    = np.isfinite(feh_s) & np.isfinite(age_s) & (age_s > 0)
-    feh   = feh_s[ok]
-    age   = age_s[ok]
+    if AGE_MIN is not None: ok &= (age_s >= AGE_MIN)
+    if AGE_MAX is not None: ok &= (age_s <= AGE_MAX)
+    feh = feh_s[ok]
+    age = age_s[ok]
 
-    if len(feh) < 100:
+    if len(feh) < MIN_SAMPLES:
         continue
 
     weights = np.maximum(mdf_kde(feh), 0)
@@ -174,8 +198,6 @@ vmax_mh =  0.45
 for r in results:
     safe_id  = r['star_id'].replace('/', '_')
     c        = cmap_mh((r['mh_obs'] - vmin_mh) / (vmax_mh - vmin_mh))
-
-    # Y range: 99th percentile of banana samples, no hard ceiling
     age_max  = np.nanpercentile(r['age'], 99) * 1.1
     age_bins = np.linspace(0, age_max, 30)
 
@@ -209,7 +231,7 @@ for r in results:
     ax_ban.set_xlabel('[Fe/H] assumed', fontsize=11)
     ax_ban.set_ylabel('Age inferred (Gyr)', fontsize=11)
     ax_ban.set_xlim(-1.05, 0.45)
-    ax_ban.set_ylim(bottom=0, top=age_max)
+    ax_ban.set_ylim(0, age_max)
     ax_ban.xaxis.set_minor_locator(AutoMinorLocator())
     ax_ban.yaxis.set_minor_locator(AutoMinorLocator())
     ax_ban.legend(loc='upper right')
@@ -233,7 +255,6 @@ for r in results:
     ax_post.yaxis.set_minor_locator(AutoMinorLocator())
     ax_post.legend(loc='upper right')
 
-    # Hide unused top corners
     fig.add_subplot(gs[0, 0]).set_visible(False)
     fig.add_subplot(gs[0, 2]).set_visible(False)
 
