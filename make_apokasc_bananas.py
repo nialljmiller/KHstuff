@@ -61,50 +61,48 @@ def classify_star(logg):
     if np.isnan(logg):
         return 'unknown'
     return 'RGB' if (logg < 2.2 or logg > 3.0) else 'clump'
+BAD_BLOB = (np.nan, np.nan, np.nan)
 
-
-# ── Log-probability ───────────────────────────────────────────────────────────
 def banana_log_prob(pos, interp, teff_obs, lum_obs, teff_sigma, lum_sigma,
                     bounds, ml_lo, ml_hi):
     initial_mass, initial_met, eep = pos
 
     mass_lo, mass_hi = bounds['initial_mass']
-    met_lo, met_hi = bounds['initial_met']
-    eep_lo, eep_hi = bounds['eep']
+    met_lo,  met_hi  = bounds['initial_met']
+    eep_lo,  eep_hi  = bounds['eep']
 
     if not (mass_lo < initial_mass < mass_hi and
-            met_lo < initial_met < met_hi and
-            eep_lo < eep < eep_hi):
-        return -np.inf, None
+            met_lo  < initial_met  < met_hi  and
+            eep_lo  < eep          < eep_hi):
+        return -np.inf, BAD_BLOB
 
-    alpha_fe = 0.0
-    initial_he = compute_y(initial_met)
+    alpha_fe      = 0.0
+    initial_he    = compute_y(initial_met)
     mixing_length = compute_ML(initial_met, ml_lo, ml_hi)
 
     he_lo, he_hi = bounds['initial_he']
     if not (he_lo <= initial_he <= he_hi):
-        return -np.inf, None
+        return -np.inf, BAD_BLOB
 
     full_index = (initial_mass, initial_met, alpha_fe,
                   initial_he, mixing_length, eep)
     try:
         star = interp.get_star_eep(full_index)
     except Exception:
-        return -np.inf, None
+        return -np.inf, BAD_BLOB
 
     if star is None or star.isna().any():
-        return -np.inf, None
+        return -np.inf, BAD_BLOB
 
     teff_model = float(star['teff'])
-    lum_model = float(star['lum'])
-    age_model = float(star['age'] if 'age' in star.index else star['Age(Gyr)'])
+    lum_model  = float(star['lum'])
+    age_model  = float(star['age'] if 'age' in star.index else star['Age(Gyr)'])
 
     log_prob = (
         -0.5 * ((teff_obs - teff_model) / teff_sigma) ** 2
-        -0.5 * ((lum_obs - lum_model) / lum_sigma) ** 2
+        -0.5 * ((lum_obs  - lum_model)  / lum_sigma)  ** 2
     )
     return log_prob, (teff_model, lum_model, age_model)
-
 
 # ── Grid loading ──────────────────────────────────────────────────────────────
 def load_grid():
