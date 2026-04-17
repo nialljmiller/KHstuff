@@ -4,6 +4,14 @@
 #SBATCH --time=00:10:00
 #SBATCH --mem=4G
 #SBATCH --output=logs/apokasc_%a.out
+#SBATCH --account=galacticbulge
+#SBATCH --partition=mb
+#SBATCH --qos=fast       
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=1
+
+
 
 source ~/python_projects/venv/bin/activate
 cd /project/galacticbulge/kiauhoku_NJM/KHstuff
