@@ -100,6 +100,24 @@ with open('results/bananas/bananas.pkl', 'rb') as f:
     bananas = pickle.load(f)
 print(f"  {len(bananas)} stars\n")
 
+# ── Load Stone-Martinez 2025 ages ─────────────────────────────────────────────
+from astropy.io import fits
+print("Loading StarFlow summary...")
+with fits.open('StarFlow_summary_v1_0_0.fits') as f:
+    sf = f[1].data
+sf_ids  = np.array([x.strip() for x in sf['sdss4_apogee_id']])
+sf_age  = sf['age']
+sf_ep   = sf['e_p_age']
+sf_en   = sf['e_n_age']
+
+def get_sm_age(star_id):
+    '''Return (age, e_p, e_n) or (nan, nan, nan) if not in StarFlow.'''
+    m = np.where(sf_ids == star_id.strip())[0]
+    if len(m) == 0:
+        return np.nan, np.nan, np.nan
+    return float(sf_age[m[0]]), float(sf_ep[m[0]]), float(sf_en[m[0]])
+
+
 def get_age_col(df):
     for c in ['age', 'Age(Gyr)']:
         if c in df.columns:
@@ -254,7 +272,13 @@ for r in results:
     ax_post.xaxis.set_minor_locator(AutoMinorLocator())
     ax_post.yaxis.set_minor_locator(AutoMinorLocator())
     ax_post.legend(loc='upper right')
-
+    
+    sm_age_val, sm_ep, sm_en = get_sm_age(r['star_id'])
+    if np.isfinite(sm_age_val):
+        ax_post.axhline(sm_age_val, color='tomato', lw=1.5, ls=':',
+                        label=f'Stone-Martinez: ${sm_age_val:.1f}^{{+{sm_ep:.1f}}}_{{-{sm_en:.1f}}}$ Gyr')
+        ax_post.legend(loc='upper right')
+    
     fig.add_subplot(gs[0, 0]).set_visible(False)
     fig.add_subplot(gs[0, 2]).set_visible(False)
 
