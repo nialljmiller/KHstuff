@@ -295,13 +295,13 @@ def combine_and_plot():
         ok  = np.isfinite(feh) & np.isfinite(age) & (age > 0)
         feh, age = feh[ok], age[ok]
         if len(feh) < 50:
-            continue
+            pass#continue
 
         # age at observed [Fe/H]
         w = 0.15
         mask_obs = (feh >= mh_obs - w) & (feh <= mh_obs + w)
         if mask_obs.sum() < 10:
-            continue
+            pass#continue
 
         med = np.median(age[mask_obs])
         lo  = np.percentile(age[mask_obs], 16)
