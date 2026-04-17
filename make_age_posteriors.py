@@ -75,7 +75,7 @@ plt.rcParams.update({
 # ── 1. Load Zoccali MDF ───────────────────────────────────────────────────────
 print("Loading Zoccali MDF...")
 zoc_rows = []
-with open('zocalli.dat', 'r') as f:
+with open('Zoccali_MDF.dat', 'r') as f:
     for line in f:
         parts = line.split()
         if len(parts) < 8:
