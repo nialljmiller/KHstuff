@@ -360,7 +360,62 @@ print(table[['star_id', 'mh_obs', 'age_median',
 print(f"\nSaved: results/posteriors/age_posterior_table.csv")
 print("Done.")
 
+# ── Stone-Martinez vs our ages ────────────────────────────────────────────────
+print("Plotting Stone-Martinez comparison...")
+our_age, our_lo, our_hi = [], [], []
+sm_age_c, sm_ep_c, sm_en_c = [], [], []
+match_ids = []
 
+for r in results:
+    a, ep, en = get_sm_age(r['star_id'])
+    if np.isfinite(a):
+        our_age.append(r['age_median'])
+        our_lo.append(r['age_median'] - r['age_lo'])
+        our_hi.append(r['age_hi'] - r['age_median'])
+        sm_age_c.append(a)
+        sm_ep_c.append(ep)
+        sm_en_c.append(en)
+        match_ids.append(r['star_id'])
+
+if len(our_age) > 0:
+    our_age  = np.array(our_age)
+    sm_age_c = np.array(sm_age_c)
+    age_max  = max(our_age.max() + max(our_hi), sm_age_c.max()) * 1.1
+    cols_m   = [cmap_mh((r['mh_obs'] - vmin_mh) / (vmax_mh - vmin_mh))
+                for r in results if np.isfinite(get_sm_age(r['star_id'])[0])]
+
+    fig, ax = plt.subplots(figsize=(5.5, 5.5))
+
+    for i in range(len(our_age)):
+        ax.errorbar(sm_age_c[i], our_age[i],
+                    xerr=[[sm_en_c[i]], [sm_ep_c[i]]],
+                    yerr=[[our_lo[i]], [our_hi[i]]],
+                    fmt='o', color=cols_m[i], ms=6, lw=1.0,
+                    capsize=2.5, ecolor=cols_m[i], zorder=3)
+
+    # 1:1 line
+    lim = (0, age_max)
+    ax.plot(lim, lim, 'k--', lw=1.0, alpha=0.5, zorder=1)
+
+    ax.set_xlabel('Stone-Martinez (2025) age (Gyr)', fontsize=12)
+    ax.set_ylabel('This work — age (Gyr)', fontsize=12)
+    ax.set_xlim(*lim)
+    ax.set_ylim(*lim)
+    ax.xaxis.set_minor_locator(AutoMinorLocator())
+    ax.yaxis.set_minor_locator(AutoMinorLocator())
+
+    sm_cb = plt.cm.ScalarMappable(cmap=cmap_mh,
+            norm=plt.Normalize(vmin=vmin_mh, vmax=vmax_mh))
+    sm_cb.set_array([])
+    cb = fig.colorbar(sm_cb, ax=ax)
+    cb.set_label('obs [M/H]', fontsize=10)
+
+    fig.savefig('results/posteriors/sm_comparison.png')
+    fig.savefig('results/posteriors/sm_comparison.pdf')
+    plt.close(fig)
+    print(f"  Saved: results/posteriors/sm_comparison.png  ({len(our_age)} matched stars)")
+else:
+    print("  No matched stars for comparison plot.")
 
 # ── Combined age distribution ─────────────────────────────────────────────────
 print("Plotting combined age distribution...")
