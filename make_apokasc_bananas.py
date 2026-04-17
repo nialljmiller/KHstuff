@@ -61,7 +61,6 @@ def classify_star(logg):
     if np.isnan(logg):
         return 'unknown'
     return 'RGB' if (logg < 2.2 or logg > 3.0) else 'clump'
-BAD_BLOB = (np.nan, np.nan, np.nan)
 
 def banana_log_prob(pos, interp, teff_obs, lum_obs, teff_sigma, lum_sigma,
                     bounds, ml_lo, ml_hi):
@@ -74,7 +73,7 @@ def banana_log_prob(pos, interp, teff_obs, lum_obs, teff_sigma, lum_sigma,
     if not (mass_lo < initial_mass < mass_hi and
             met_lo  < initial_met  < met_hi  and
             eep_lo  < eep          < eep_hi):
-        return -np.inf, BAD_BLOB
+        return -np.inf, np.nan, np.nan, np.nan
 
     alpha_fe      = 0.0
     initial_he    = compute_y(initial_met)
@@ -82,17 +81,17 @@ def banana_log_prob(pos, interp, teff_obs, lum_obs, teff_sigma, lum_sigma,
 
     he_lo, he_hi = bounds['initial_he']
     if not (he_lo <= initial_he <= he_hi):
-        return -np.inf, BAD_BLOB
+        return -np.inf, np.nan, np.nan, np.nan
 
     full_index = (initial_mass, initial_met, alpha_fe,
                   initial_he, mixing_length, eep)
     try:
         star = interp.get_star_eep(full_index)
     except Exception:
-        return -np.inf, BAD_BLOB
+        return -np.inf, np.nan, np.nan, np.nan
 
     if star is None or star.isna().any():
-        return -np.inf, BAD_BLOB
+        return -np.inf, np.nan, np.nan, np.nan
 
     teff_model = float(star['teff'])
     lum_model  = float(star['lum'])
@@ -102,7 +101,7 @@ def banana_log_prob(pos, interp, teff_obs, lum_obs, teff_sigma, lum_sigma,
         -0.5 * ((teff_obs - teff_model) / teff_sigma) ** 2
         -0.5 * ((lum_obs  - lum_model)  / lum_sigma)  ** 2
     )
-    return log_prob, (teff_model, lum_model, age_model)
+    return log_prob, teff_model, lum_model, age_model
 
 # ── Grid loading ──────────────────────────────────────────────────────────────
 def load_grid():
@@ -177,7 +176,8 @@ def run_star(star_row, jtgrid, bounds, n_walkers=N_WALKERS,
     print(f"  {star_id}  T={teff_obs:.0f}K  logg={logg_obs:.2f}  [Fe/H]={mh_obs:.2f}"
           f"  IntAge={int_age:.1f}Gyr  class={stellar_class}")
 
-    rng = np.random.default_rng(abs(hash(star_id)) % (2**31))
+    seed = int(np.frombuffer(star_id.encode('utf-8'), dtype=np.uint8).sum() + 1009 * len(star_id))
+    rng = np.random.default_rng(seed)
     p0 = make_initial_positions(star_row, bounds, n_walkers, rng)
 
     sampler = emcee.EnsembleSampler(
@@ -406,8 +406,8 @@ if __name__ == '__main__':
     jtgrid, bounds = load_grid()
 
     if args.star_index is not None:
-        if args.star_index >= len(stars):
-            print(f"ERROR: star_index {args.star_index} out of range (max {len(stars)-1}).")
+        if args.star_index < 0 or args.star_index >= len(stars):
+            print(f"ERROR: star_index {args.star_index} out of range (valid 0..{len(stars)-1}).")
             sys.exit(1)
         run_star(
             stars.iloc[args.star_index],
