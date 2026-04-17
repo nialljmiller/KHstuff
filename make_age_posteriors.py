@@ -417,6 +417,62 @@ if len(our_age) > 0:
 else:
     print("  No matched stars for comparison plot.")
 
+
+
+# ── Residual plots ────────────────────────────────────────────────────────────
+if len(our_age) > 0:
+    residuals  = our_age - sm_age_c
+    mean_age   = (our_age + sm_age_c) / 2
+    mh_matched = np.array([r['mh_obs'] for r in results
+                            if np.isfinite(get_sm_age(r['star_id'])[0])])
+
+    def residual_scatter(ax, x, xerr=None):
+        for i in range(len(our_age)):
+            ax.errorbar(x[i], residuals[i],
+                        xerr=[[xerr[i][0]], [xerr[i][1]]] if xerr else None,
+                        yerr=[[our_lo[i]+sm_en_c[i]], [our_hi[i]+sm_ep_c[i]]],
+                        fmt='o', color=cols_m[i], ms=6, lw=1.0,
+                        capsize=2.5, ecolor=cols_m[i], zorder=3)
+        ax.axhline(0, color='k', lw=1.0, ls='--', alpha=0.5)
+        ax.set_ylabel('This work $-$ Stone-Martinez (Gyr)', fontsize=11)
+        ax.xaxis.set_minor_locator(AutoMinorLocator())
+        ax.yaxis.set_minor_locator(AutoMinorLocator())
+
+    # 1 — Residual vs SM age
+    fig, ax = plt.subplots(figsize=(5.5, 4.5))
+    residual_scatter(ax, sm_age_c, xerr=list(zip(sm_en_c, sm_ep_c)))
+    ax.set_xlabel('Stone-Martinez (2025) age (Gyr)', fontsize=11)
+    fig.savefig('results/posteriors/residual_vs_sm_age.png')
+    fig.savefig('results/posteriors/residual_vs_sm_age.pdf')
+    plt.close(fig)
+
+    # 2 — Residual vs [M/H]
+    fig, ax = plt.subplots(figsize=(5.5, 4.5))
+    residual_scatter(ax, mh_matched)
+    ax.set_xlabel('obs [M/H]', fontsize=11)
+    fig.savefig('results/posteriors/residual_vs_mh.png')
+    fig.savefig('results/posteriors/residual_vs_mh.pdf')
+    plt.close(fig)
+
+    # 4 — Bland-Altman
+    fig, ax = plt.subplots(figsize=(5.5, 4.5))
+    residual_scatter(ax, mean_age)
+    ax.axhline(np.mean(residuals), color='tomato', lw=1.2,
+               label=f'Mean: {np.mean(residuals):.1f} Gyr')
+    ax.axhline(np.mean(residuals) + 1.96*np.std(residuals),
+               color='tomato', lw=0.8, ls=':')
+    ax.axhline(np.mean(residuals) - 1.96*np.std(residuals),
+               color='tomato', lw=0.8, ls=':')
+    ax.set_xlabel('Mean age (Gyr)', fontsize=11)
+    ax.legend(fontsize=9)
+    fig.savefig('results/posteriors/bland_altman.png')
+    fig.savefig('results/posteriors/bland_altman.pdf')
+    plt.close(fig)
+
+    print("  Saved residual_vs_sm_age, residual_vs_mh, bland_altman")
+
+
+
 # ── Combined age distribution ─────────────────────────────────────────────────
 print("Plotting combined age distribution...")
 all_ages = np.concatenate([r['age_posterior'] for r in results])
