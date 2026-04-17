@@ -304,6 +304,24 @@ for i in range(len(results)):
                 fmt='o', color=cols[i], ms=6, lw=1.3,
                 capsize=2.5, ecolor=cols[i], zorder=3)
 
+# Stone-Martinez ages on the same plot
+sm_mh, sm_age, sm_ep, sm_en = [], [], [], []
+for r in results:
+    a, ep, en = get_sm_age(r['star_id'])
+    if np.isfinite(a):
+        sm_mh.append(r['mh_obs'])
+        sm_age.append(a)
+        sm_ep.append(ep)
+        sm_en.append(en)
+
+if sm_mh:
+    ax.errorbar(sm_mh, sm_age,
+                yerr=[sm_en, sm_ep],
+                fmt='s', color='tomato', ms=5, lw=1.0,
+                capsize=2.0, ecolor='tomato', zorder=4,
+                label='Stone-Martinez (2025)', mfc='white', mec='tomato')
+    ax.legend(fontsize=9)
+
 ax.set_xlabel('[M/H]', fontsize=12)
 ax.set_ylabel('Age (Gyr)', fontsize=12)
 ax.set_xlim(-1.5, 0.6)
@@ -311,17 +329,16 @@ ax.set_ylim(bottom=0)
 ax.xaxis.set_minor_locator(AutoMinorLocator())
 ax.yaxis.set_minor_locator(AutoMinorLocator())
 
-sm = plt.cm.ScalarMappable(cmap=cmap_mh,
-     norm=plt.Normalize(vmin=vmin_mh, vmax=vmax_mh))
-sm.set_array([])
-cb = fig.colorbar(sm, ax=ax)
+sm_cb = plt.cm.ScalarMappable(cmap=cmap_mh,
+        norm=plt.Normalize(vmin=vmin_mh, vmax=vmax_mh))
+sm_cb.set_array([])
+cb = fig.colorbar(sm_cb, ax=ax)
 cb.set_label('obs [M/H]', fontsize=10)
 
 fig.savefig('results/posteriors/age_metallicity_relation.png')
 fig.savefig('results/posteriors/age_metallicity_relation.pdf')
 plt.close(fig)
 print("  Saved: results/posteriors/age_metallicity_relation.png\n")
-
 # ── 6. Table ──────────────────────────────────────────────────────────────────
 table = pd.DataFrame([{
     'star_id':    r['star_id'],
