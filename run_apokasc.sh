@@ -14,6 +14,7 @@
 
 source ~/python_projects/venv/bin/activate
 cd /project/galacticbulge/kiauhoku_NJM/KHstuff
+mkdir -p logs results/apokasc/chains results/apokasc/plots
 
 python make_apokasc_bananas.py \
     --star_index "$SLURM_ARRAY_TASK_ID" \
