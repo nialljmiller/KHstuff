@@ -252,16 +252,20 @@ def load_apokasc(path='MeridithRomanApokascCalibLtest5ns3L.out'):
     raw = pd.read_csv(path, sep=r'\s+')
 
     raw = raw.rename(columns={
-        '2MASSID': 'star_id',
-        'Teff': 'teff_obs',
-        'Logg': 'logg_obs',
-        'Fe/H': 'mh_obs',
+        '2MASSID':  'star_id',
+        'Teff':     'teff_obs',
+        'Logg':     'logg_obs',
+        'Fe/H':     'mh_obs',
         'Teff_err': 'e_teff',
-        'IntAge': 'int_age',
-        'IntMass': 'int_mass',
+        'IntAge':   'int_age',
+        'IntMass':  'int_mass',
+        'C/N':      'cn_class',      # add this
     })
+    
+    bad = (raw['int_age'] <= 0) | (raw['int_age'] > 13.8) | \
+          (raw['int_mass'] <= 0) | (raw['teff_obs'] <= 0) | \
+          (raw['cn_class'] != 'RGB')                         # add this
 
-    bad = (raw['int_age'] <= 0) | (raw['int_age'] > 13.8) | (raw['int_mass'] <= 0) | (raw['teff_obs'] <= 0)
     raw = raw[~bad].copy()
 
     raw['lum_obs'] = compute_lum(raw['teff_obs'], raw['logg_obs'], raw['int_mass'])
