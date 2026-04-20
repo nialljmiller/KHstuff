@@ -26,12 +26,19 @@ N_BURNIN = 300
 N_ITER = 1000
 NDIM = 3
 
+# ── Observational uncertainties / priors ─────────────────────────────────────
 LUM_SIGMA_DEFAULT = 0.10   # dex
+LOGG_SIGMA_DEFAULT = 0.05  # dex
+MH_SIGMA_DEFAULT = 0.05    # dex
+AGE_UNIVERSE = 13.8        # Gyr
 
 # Store only tiny numeric blobs instead of full interpolated star objects.
 BLOBS_DTYPE = np.dtype([
     ('teff', 'f8'),
     ('lum', 'f8'),
+    ('logg', 'f8'),
+    ('met', 'f8'),
+    ('mass', 'f8'),
     ('age', 'f8'),
 ])
 
@@ -44,8 +51,8 @@ TEFF_SUN = 5777.0      # K
 
 
 def compute_y(feh):
-    Z = Z_SOLAR * 10**feh
-    return float(np.clip(Y_PRIMORDIAL + DYDZ * Z, 0.24, 0.32))
+    z = Z_SOLAR * 10**feh
+    return float(np.clip(Y_PRIMORDIAL + DYDZ * z, 0.24, 0.32))
 
 
 def compute_ML(feh, lo, hi):
@@ -62,46 +69,168 @@ def classify_star(logg):
         return 'unknown'
     return 'RGB' if (logg < 2.2 or logg > 3.0) else 'clump'
 
-def banana_log_prob(pos, interp, teff_obs, lum_obs, teff_sigma, lum_sigma,
-                    bounds, ml_lo, ml_hi):
+
+def first_present(columns, candidates):
+    for name in candidates:
+        if name in columns:
+            return name
+    return None
+
+
+def get_row_sigma(star_row, candidates, default_value):
+    for name in candidates:
+        if name in star_row.index:
+            value = pd.to_numeric(star_row[name], errors='coerce')
+            if np.isfinite(value) and value > 0:
+                return float(value)
+    return float(default_value)
+
+
+def get_star_value(star, preferred_name, fallback=np.nan):
+    if preferred_name in star.index:
+        return float(star[preferred_name])
+    return float(fallback)
+
+
+def run_kiauhoku_coarse_fit(star_row, interp, bounds):
+    """
+    Use Kiauhoku's gridsearch_fit as a coarse initializer for the walkers.
+    This is wrapped in a conservative try/except because the exact installed
+    Kiauhoku signature can vary by environment.
+    """
+    teff_obs = float(star_row['teff_obs'])
+    lum_obs = float(star_row['lum_obs'])
+    logg_obs = float(star_row['logg_obs'])
+    mh_obs = float(star_row['mh_obs'])
+    e_teff = float(star_row['e_teff'])
+    e_logg = float(star_row['e_logg'])
+    e_mh = float(star_row['e_mh'])
+
+    star = {
+        'teff': teff_obs,
+        'lum': lum_obs,
+        'met': mh_obs,
+        'logg': logg_obs,
+        'alpha_fe': 0.0,
+        'initial_he': compute_y(mh_obs),
+    }
+    scale = {
+        'teff': max(e_teff, 50.0),
+        'lum': LUM_SIGMA_DEFAULT,
+        'met': max(e_mh, 0.02),
+        'logg': max(e_logg, 0.02),
+        'alpha_fe': 0.05,
+        'initial_he': 0.01,
+    }
+
+    bounds_list = [
+        bounds['initial_mass'],
+        bounds['initial_met'],
+        bounds['alpha_fe'],
+        bounds['initial_he'],
+        bounds['mixing_length'],
+    ]
+
+    attempts = [
+        dict(scale=scale, tol=1e-2, maxiter=100, bounds=bounds_list),
+        dict(scale=scale, tol=1e-2, maxiter=100),
+        dict(scale=scale),
+        {},
+    ]
+
+    last_error = None
+    for kwargs in attempts:
+        model, fit = interp.gridsearch_fit(star, **kwargs)
+        fit_success = bool(getattr(fit, 'success', True))
+        if not fit_success:
+            last_error = RuntimeError(f"gridsearch_fit returned success={fit_success}")
+            continue
+        if model is None:
+            last_error = RuntimeError('gridsearch_fit returned model=None')
+            continue
+        return {
+            'initial_mass': get_star_value(model, 'initial_mass'),
+            'initial_met': get_star_value(model, 'initial_met'),
+            'eep': get_star_value(model, 'eep'),
+            'fit': fit,
+            'model': model,
+            'kwargs': kwargs,
+        }
+
+    print(f"    Kiauhoku coarse fit unavailable; falling back to broad init ({last_error})")
+    return None
+
+
+def banana_log_prob(
+    pos,
+    interp,
+    teff_obs,
+    lum_obs,
+    logg_obs,
+    mh_obs,
+    teff_sigma,
+    lum_sigma,
+    logg_sigma,
+    mh_sigma,
+    bounds,
+    ml_lo,
+    ml_hi,
+):
     initial_mass, initial_met, eep = pos
 
     mass_lo, mass_hi = bounds['initial_mass']
-    met_lo,  met_hi  = bounds['initial_met']
-    eep_lo,  eep_hi  = bounds['eep']
+    met_lo, met_hi = bounds['initial_met']
+    eep_lo, eep_hi = bounds['eep']
 
     if not (mass_lo < initial_mass < mass_hi and
-            met_lo  < initial_met  < met_hi  and
-            eep_lo  < eep          < eep_hi):
-        return -np.inf, np.nan, np.nan, np.nan
+            met_lo < initial_met < met_hi and
+            eep_lo < eep < eep_hi):
+        return -np.inf, np.nan, np.nan, np.nan, np.nan, np.nan, np.nan
 
-    alpha_fe      = 0.0
-    initial_he    = compute_y(initial_met)
+    alpha_fe = 0.0
+    initial_he = compute_y(initial_met)
     mixing_length = compute_ML(initial_met, ml_lo, ml_hi)
 
     he_lo, he_hi = bounds['initial_he']
     if not (he_lo <= initial_he <= he_hi):
-        return -np.inf, np.nan, np.nan, np.nan
+        return -np.inf, np.nan, np.nan, np.nan, np.nan, np.nan, np.nan
 
     full_index = (initial_mass, initial_met, alpha_fe,
                   initial_he, mixing_length, eep)
     try:
         star = interp.get_star_eep(full_index)
     except Exception:
-        return -np.inf, np.nan, np.nan, np.nan
+        return -np.inf, np.nan, np.nan, np.nan, np.nan, np.nan, np.nan
 
     if star is None or star.isna().any():
-        return -np.inf, np.nan, np.nan, np.nan
+        return -np.inf, np.nan, np.nan, np.nan, np.nan, np.nan, np.nan
 
-    teff_model = float(star['teff'])
-    lum_model  = float(star['lum'])
-    age_model  = float(star['age'] if 'age' in star.index else star['Age(Gyr)'])
+    teff_model = get_star_value(star, 'teff')
+    lum_model = get_star_value(star, 'lum')
+    logg_model = get_star_value(star, 'logg')
+    met_model = get_star_value(star, 'met', fallback=initial_met)
+    mass_model = get_star_value(star, 'mass', fallback=initial_mass)
+    if 'age' in star.index:
+        age_model = float(star['age'])
+    elif 'Age(Gyr)' in star.index:
+        age_model = float(star['Age(Gyr)'])
+    else:
+        age_model = np.nan
+
+    if not np.isfinite(age_model) or age_model <= 0 or age_model > AGE_UNIVERSE:
+        return -np.inf, np.nan, np.nan, np.nan, np.nan, np.nan, np.nan
+
+    if not np.isfinite(logg_model) or not np.isfinite(met_model):
+        return -np.inf, np.nan, np.nan, np.nan, np.nan, np.nan, np.nan
 
     log_prob = (
         -0.5 * ((teff_obs - teff_model) / teff_sigma) ** 2
-        -0.5 * ((lum_obs  - lum_model)  / lum_sigma)  ** 2
+        -0.5 * ((lum_obs - lum_model) / lum_sigma) ** 2
+        -0.5 * ((logg_obs - logg_model) / logg_sigma) ** 2
+        -0.5 * ((mh_obs - met_model) / mh_sigma) ** 2
     )
-    return log_prob, teff_model, lum_model, age_model
+    return log_prob, teff_model, lum_model, logg_model, met_model, mass_model, age_model
+
 
 # ── Grid loading ──────────────────────────────────────────────────────────────
 def load_grid():
@@ -111,6 +240,7 @@ def load_grid():
     jtgrid['mass'] = jtgrid['Mass(Msun)']
     jtgrid['teff'] = 10**jtgrid['Log Teff(K)']
     jtgrid['lum'] = jtgrid['L/Lsun']
+    jtgrid['logg'] = jtgrid['Log G(cgs)'] if 'Log G(cgs)' in jtgrid.columns else jtgrid['logg']
     jtgrid['met'] = jtgrid.index.get_level_values('initial_met')
     jtgrid['initial_he'] = jtgrid.index.get_level_values('initial_he')
     jtgrid['mixing_length'] = jtgrid.index.get_level_values('mixing_length')
@@ -128,24 +258,42 @@ def load_grid():
 
 
 # ── Initial walker positions ──────────────────────────────────────────────────
-def make_initial_positions(star_row, bounds, n_walkers, rng):
+def make_initial_positions(star_row, bounds, n_walkers, rng, coarse_fit=None):
     mass_lo, mass_hi = bounds['initial_mass']
     met_lo, met_hi = bounds['initial_met']
     eep_lo, eep_hi = bounds['eep']
 
-    c_mass = (mass_lo + mass_hi) / 2
-    c_met = float(star_row['mh_obs'])
-    c_eep = (eep_lo + eep_hi) / 2
+    if coarse_fit is not None:
+        c_mass = float(np.clip(coarse_fit['initial_mass'], mass_lo, mass_hi))
+        c_met = float(np.clip(coarse_fit['initial_met'], met_lo, met_hi))
+        if np.isfinite(coarse_fit['eep']):
+            c_eep = float(np.clip(coarse_fit['eep'], eep_lo, eep_hi))
+        else:
+            c_eep = 0.5 * (eep_lo + eep_hi)
 
-    w_mass = 0.05 * (mass_hi - mass_lo)
-    w_met = 0.05 * (met_hi - met_lo)
-    w_eep = 0.05 * (eep_hi - eep_lo)
+        w_mass = max(0.02 * (mass_hi - mass_lo), 0.03)
+        w_met = max(0.02 * (met_hi - met_lo), 0.02)
+        w_eep = max(0.02 * (eep_hi - eep_lo), 3.0)
+    else:
+        c_mass = 0.5 * (mass_lo + mass_hi)
+        c_met = float(star_row['mh_obs'])
+        c_eep = 0.5 * (eep_lo + eep_hi)
+
+        w_mass = 0.05 * (mass_hi - mass_lo)
+        w_met = 0.05 * (met_hi - met_lo)
+        w_eep = 0.05 * (eep_hi - eep_lo)
 
     pos = np.column_stack([
         np.clip(rng.normal(c_mass, w_mass, n_walkers), mass_lo, mass_hi),
         np.clip(rng.normal(c_met, w_met, n_walkers), met_lo, met_hi),
         np.clip(rng.normal(c_eep, w_eep, n_walkers), eep_lo, eep_hi),
     ])
+
+    # jitter any pathological all-identical walkers
+    pos += rng.normal(0.0, [1e-4, 1e-4, 1e-3], size=pos.shape)
+    pos[:, 0] = np.clip(pos[:, 0], mass_lo + 1e-6, mass_hi - 1e-6)
+    pos[:, 1] = np.clip(pos[:, 1], met_lo + 1e-6, met_hi - 1e-6)
+    pos[:, 2] = np.clip(pos[:, 2], eep_lo + 1e-6, eep_hi - 1e-6)
     return pos
 
 
@@ -165,20 +313,31 @@ def run_star(star_row, jtgrid, bounds, n_walkers=N_WALKERS,
     logg_obs = float(star_row['logg_obs'])
     mh_obs = float(star_row['mh_obs'])
     int_age = float(star_row['int_age'])
-    e_teff = float(star_row.get('e_teff', 100.0))
-    if np.isnan(e_teff) or e_teff <= 0:
-        e_teff = 100.0
+    int_mass = float(star_row['int_mass'])
+    e_teff = float(star_row['e_teff'])
+    e_logg = float(star_row['e_logg'])
+    e_mh = float(star_row['e_mh'])
 
     stellar_class = classify_star(logg_obs)
     ml_lo = bounds['mixing_length'][0]
     ml_hi = bounds['mixing_length'][1]
 
-    print(f"  {star_id}  T={teff_obs:.0f}K  logg={logg_obs:.2f}  [Fe/H]={mh_obs:.2f}"
-          f"  IntAge={int_age:.1f}Gyr  class={stellar_class}")
+    print(
+        f"  {star_id}  T={teff_obs:.0f}K  logg={logg_obs:.2f}  [Fe/H]={mh_obs:.2f}"
+        f"  IntAge={int_age:.1f}Gyr  IntMass={int_mass:.2f}Msun  class={stellar_class}"
+    )
 
     seed = int(np.frombuffer(star_id.encode('utf-8'), dtype=np.uint8).sum() + 1009 * len(star_id))
     rng = np.random.default_rng(seed)
-    p0 = make_initial_positions(star_row, bounds, n_walkers, rng)
+
+    coarse_fit = run_kiauhoku_coarse_fit(star_row, jtgrid, bounds)
+    if coarse_fit is not None:
+        print(
+            f"    coarse fit → M={coarse_fit['initial_mass']:.3f}, "
+            f"[Fe/H]={coarse_fit['initial_met']:.3f}, eep={coarse_fit['eep']:.2f}"
+        )
+
+    p0 = make_initial_positions(star_row, bounds, n_walkers, rng, coarse_fit=coarse_fit)
 
     sampler = emcee.EnsembleSampler(
         n_walkers,
@@ -189,8 +348,12 @@ def run_star(star_row, jtgrid, bounds, n_walkers=N_WALKERS,
             interp=jtgrid,
             teff_obs=teff_obs,
             lum_obs=lum_obs,
+            logg_obs=logg_obs,
+            mh_obs=mh_obs,
             teff_sigma=e_teff,
             lum_sigma=LUM_SIGMA_DEFAULT,
+            logg_sigma=e_logg,
+            mh_sigma=e_mh,
             bounds=bounds,
             ml_lo=ml_lo,
             ml_hi=ml_hi,
@@ -204,16 +367,28 @@ def run_star(star_row, jtgrid, bounds, n_walkers=N_WALKERS,
 
     flat_samples = sampler.get_chain(flat=True)
     flat_blobs = sampler.get_blobs(flat=True)
+    log_prob = sampler.get_log_prob(flat=True)
     acc = float(np.mean(sampler.acceptance_fraction))
 
     output = pd.DataFrame(flat_samples, columns=['initial_mass', 'initial_met', 'eep'])
+    output['alpha_fe'] = 0.0
+    output['initial_he'] = output['initial_met'].apply(compute_y)
+    output['mixing_length'] = output['initial_met'].apply(lambda feh: compute_ML(feh, ml_lo, ml_hi))
+    output['log_prob'] = log_prob
+
     if flat_blobs is not None and len(flat_blobs) == len(output):
         output['teff'] = flat_blobs['teff']
         output['lum'] = flat_blobs['lum']
+        output['logg'] = flat_blobs['logg']
+        output['met'] = flat_blobs['met']
+        output['mass'] = flat_blobs['mass']
         output['age'] = flat_blobs['age']
     else:
         output['teff'] = np.nan
         output['lum'] = np.nan
+        output['logg'] = np.nan
+        output['met'] = np.nan
+        output['mass'] = np.nan
         output['age'] = np.nan
 
     output['teff_obs'] = teff_obs
@@ -221,6 +396,22 @@ def run_star(star_row, jtgrid, bounds, n_walkers=N_WALKERS,
     output['logg_obs'] = logg_obs
     output['mh_obs'] = mh_obs
     output['stellar_class'] = stellar_class
+
+    valid = (
+        np.isfinite(output['age'].values)
+        & np.isfinite(output['log_prob'].values)
+        & (output['age'].values > 0)
+        & (output['age'].values <= AGE_UNIVERSE)
+    )
+    if valid.any():
+        posterior_age = output.loc[valid, 'age'].values
+        posterior_age_med = float(np.median(posterior_age))
+        posterior_age_lo = float(np.percentile(posterior_age, 16))
+        posterior_age_hi = float(np.percentile(posterior_age, 84))
+    else:
+        posterior_age_med = np.nan
+        posterior_age_lo = np.nan
+        posterior_age_hi = np.nan
 
     result = {
         'star_id': star_id,
@@ -230,7 +421,14 @@ def run_star(star_row, jtgrid, bounds, n_walkers=N_WALKERS,
         'logg_obs': logg_obs,
         'mh_obs': mh_obs,
         'int_age': int_age,
+        'int_mass': int_mass,
         'e_teff': e_teff,
+        'e_logg': e_logg,
+        'e_mh': e_mh,
+        'coarse_fit': coarse_fit,
+        'posterior_age_median': posterior_age_med,
+        'posterior_age_lo': posterior_age_lo,
+        'posterior_age_hi': posterior_age_hi,
         'output': output,
         'acceptance_fraction': acc,
         'n_walkers': n_walkers,
@@ -240,10 +438,17 @@ def run_star(star_row, jtgrid, bounds, n_walkers=N_WALKERS,
     with open(chain_path, 'wb') as f:
         pickle.dump(result, f, protocol=pickle.HIGHEST_PROTOCOL)
 
-    del sampler, flat_samples, flat_blobs, output, result
+    del sampler, flat_samples, flat_blobs, log_prob, output, result
     gc.collect()
 
-    print(f"    → saved  (acc={acc:.2f})")
+    print(
+        f"    → saved  (acc={acc:.2f})"
+        f"  posterior age={posterior_age_med:.2f}"
+        f" +{posterior_age_hi - posterior_age_med:.2f}"
+        f" -{posterior_age_med - posterior_age_lo:.2f} Gyr"
+        if np.isfinite(posterior_age_med)
+        else f"    → saved  (acc={acc:.2f})  posterior age unavailable"
+    )
     return True
 
 
@@ -252,25 +457,48 @@ def load_apokasc(path='MeridithRomanApokascCalibLtest5ns3L.out'):
     raw = pd.read_csv(path, sep=r'\s+')
 
     raw = raw.rename(columns={
-        '2MASSID':  'star_id',
-        'Teff':     'teff_obs',
-        'Logg':     'logg_obs',
-        'Fe/H':     'mh_obs',
+        '2MASSID': 'star_id',
+        'Teff': 'teff_obs',
+        'Logg': 'logg_obs',
+        'Fe/H': 'mh_obs',
         'Teff_err': 'e_teff',
-        'IntAge':   'int_age',
-        'IntMass':  'int_mass',
-        'C/N':      'cn_class',      # add this
+        'IntAge': 'int_age',
+        'IntMass': 'int_mass',
+        'C/N': 'cn_class',
     })
-    
-    bad = (raw['int_age'] <= 0) | (raw['int_age'] > 13.8) | \
-          (raw['int_mass'] <= 0) | (raw['teff_obs'] <= 0) | \
-          (raw['cn_class'] != 'RGB')                         # add this
+
+    logg_err_col = first_present(raw.columns, ['e_logg', 'logg_err', 'Logg_err', 'Logg_Err', 'e_Logg'])
+    mh_err_col = first_present(raw.columns, ['e_mh', 'mh_err', 'Fe/H_err', 'FeH_err', '[Fe/H]_err', 'e_Fe/H'])
+    if logg_err_col is not None and logg_err_col != 'e_logg':
+        raw = raw.rename(columns={logg_err_col: 'e_logg'})
+    if mh_err_col is not None and mh_err_col != 'e_mh':
+        raw = raw.rename(columns={mh_err_col: 'e_mh'})
+
+    if 'e_logg' not in raw.columns:
+        raw['e_logg'] = LOGG_SIGMA_DEFAULT
+    if 'e_mh' not in raw.columns:
+        raw['e_mh'] = MH_SIGMA_DEFAULT
+    if 'e_teff' not in raw.columns:
+        raw['e_teff'] = 100.0
+
+    bad = (
+        (raw['int_age'] <= 0)
+        | (raw['int_age'] > AGE_UNIVERSE)
+        | (raw['int_mass'] <= 0)
+        | (raw['teff_obs'] <= 0)
+        | (raw['cn_class'] != 'RGB')
+    )
 
     raw = raw[~bad].copy()
 
+    # Keep using the APOKASC/seismic proxy luminosity already present in this
+    # workflow, but the likelihood now also conditions directly on logg and [M/H].
     raw['lum_obs'] = compute_lum(raw['teff_obs'], raw['logg_obs'], raw['int_mass'])
 
     raw = raw.dropna(subset=['star_id', 'teff_obs', 'lum_obs', 'logg_obs', 'mh_obs', 'int_age'])
+    raw['e_teff'] = raw['e_teff'].apply(lambda x: x if np.isfinite(x) and x > 0 else 100.0)
+    raw['e_logg'] = raw['e_logg'].apply(lambda x: x if np.isfinite(x) and x > 0 else LOGG_SIGMA_DEFAULT)
+    raw['e_mh'] = raw['e_mh'].apply(lambda x: x if np.isfinite(x) and x > 0 else MH_SIGMA_DEFAULT)
     raw = raw.reset_index(drop=True)
     print(f"APOKASC catalogue: {len(raw)} stars after filtering\n")
     return raw
@@ -304,21 +532,16 @@ def combine_and_plot():
         if age_col not in output.columns:
             continue
 
-        feh = output['initial_met'].values
         age = output[age_col].values
-        ok = np.isfinite(feh) & np.isfinite(age) & (age > 0)
-        feh, age = feh[ok], age[ok]
-        if len(feh) < 50:
+        logp = output['log_prob'].values if 'log_prob' in output.columns else np.full(len(output), np.nan)
+        ok = np.isfinite(age) & np.isfinite(logp) & (age > 0) & (age <= AGE_UNIVERSE)
+        if ok.sum() < 50:
             continue
 
-        w = 0.15
-        mask_obs = (feh >= mh_obs - w) & (feh <= mh_obs + w)
-        if mask_obs.sum() < 10:
-            continue
-
-        med = np.median(age[mask_obs])
-        lo = np.percentile(age[mask_obs], 16)
-        hi = np.percentile(age[mask_obs], 84)
+        posterior_age = age[ok]
+        med = np.median(posterior_age)
+        lo = np.percentile(posterior_age, 16)
+        hi = np.percentile(posterior_age, 84)
 
         our_ages.append(med)
         our_lo.append(med - lo)
@@ -349,7 +572,7 @@ def combine_and_plot():
     lim = (0, age_max)
     ax.plot(lim, lim, 'k--', lw=1.0, alpha=0.5)
     ax.set_xlabel('Asteroseismic age (Gyr)', fontsize=11)
-    ax.set_ylabel('This work — age (Gyr)', fontsize=11)
+    ax.set_ylabel('This work — posterior age (Gyr)', fontsize=11)
     ax.set_xlim(*lim)
     ax.set_ylim(*lim)
     ax.xaxis.set_minor_locator(AutoMinorLocator())
