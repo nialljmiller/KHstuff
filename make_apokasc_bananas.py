@@ -180,8 +180,9 @@ def load_apokasc(path='MeridithRomanApokascCalibLtest5ns3L.out'):
         (raw['int_age'] <= 0)
         | (raw['int_age'] > AGE_UNIVERSE)
         | (raw['int_mass'] <= 0)
-        | (raw['teff_obs'] <= 0)
+        | (raw['teff_obs'] <= 4000)
         | (raw['cn_class'] != 'RGB')
+        | (raw['mh_obs'] <= 0.15)
     )
 
     stars = raw[~bad].copy()
