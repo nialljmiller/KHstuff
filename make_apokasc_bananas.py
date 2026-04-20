@@ -261,7 +261,7 @@ def load_apokasc(path='MeridithRomanApokascCalibLtest5ns3L.out'):
         'IntMass': 'int_mass',
     })
 
-    bad = (raw['int_age'] < 0) | (raw['int_mass'] < 0) | (raw['teff_obs'] < 0)
+    bad = (raw['int_age'] <= 0) | (raw['int_age'] > 13.8) | (raw['int_mass'] <= 0) | (raw['teff_obs'] <= 0)
     raw = raw[~bad].copy()
 
     raw['lum_obs'] = compute_lum(raw['teff_obs'], raw['logg_obs'], raw['int_mass'])
