@@ -433,7 +433,7 @@ def save_banana_plot(star_id, flat_samples, blobs_df,
 
     fig.suptitle(
         f"{star_id}  [{stellar_class}]\n"
-        f"Teff={teff_obs:.0f} K   logg={logg_obs:.2f}   lum={lum_obs:.2f}   "
+        f"Teff={teff_obs:.0f} K   logg={logg_obs:.2f}   lum={lum_obs:.2f}\n   "
         f"obs[M/H]={mh_obs:.2f}   N_samples={n_eff:,}",
         fontsize=10, fontweight='bold', y=0.97
     )
