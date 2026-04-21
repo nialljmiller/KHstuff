@@ -147,6 +147,23 @@ def load_grid():
     jtgrid['mixing_length'] = jtgrid.index.get_level_values('mixing_length')
     jtgrid['alpha_fe'] = jtgrid.index.get_level_values('alpha_fe')
     jtgrid['age'] = jtgrid['Age(Gyr)']
+
+    # ── Save observable bounds read directly from the raw grid ────────────────
+    import json
+    grid_obs_bounds = {
+        'lum_min':  float(jtgrid['lum'].min()),
+        'lum_max':  float(jtgrid['lum'].max()),
+        'teff_min': float(jtgrid['teff'].min()),
+        'teff_max': float(jtgrid['teff'].max()),
+    }
+    os.makedirs('results', exist_ok=True)
+    with open('results/grid_obs_bounds.json', 'w') as _fj:
+        json.dump(grid_obs_bounds, _fj, indent=2)
+    print(f"  Grid obs bounds: lum=[{grid_obs_bounds['lum_min']:.2f}, "
+          f"{grid_obs_bounds['lum_max']:.2f}]  "
+          f"teff=[{grid_obs_bounds['teff_min']:.0f}, "
+          f"{grid_obs_bounds['teff_max']:.0f}] K")
+
     jtgrid.set_name('jtgrid')
     jtgrid = jtgrid.to_interpolator()
     print("Grid loaded.\n")
@@ -155,7 +172,7 @@ def load_grid():
         name: (float(vals.min()), float(vals.max()))
         for name, vals in zip(jtgrid.index_names, jtgrid.index_columns)
     }
-    return jtgrid, bounds
+    return jtgrid, bounds, grid_obs_bounds
 
 
 # ── APOKASC catalogue loading ─────────────────────────────────────────────────
@@ -190,6 +207,20 @@ def load_apokasc(path='MeridithRomanApokascCalibLtest5ns3L.out'):
         stars['logg_obs'].values,
         stars['int_mass'].values,
     )
+
+    # ── Remove stars above the grid luminosity ceiling ─────────────────────────
+    import json
+    try:
+        with open('results/grid_obs_bounds.json') as _fj:
+            _gob = json.load(_fj)
+        lum_max = _gob['lum_max']
+        n_before = len(stars)
+        stars = stars[stars['lum_obs'] <= lum_max].copy()
+        print(f"  Removed {n_before - len(stars)} stars with lum_obs > grid ceiling "
+              f"({lum_max:.2f} log L/Lsun)")
+    except FileNotFoundError:
+        print("  WARNING: results/grid_obs_bounds.json not found — "
+              "run load_grid() first to generate it. No lum ceiling applied.")
     stars['skip_reason'] = 'none'
     stars['fit_loss'] = np.nan
     stars = stars.dropna(
@@ -318,6 +349,18 @@ def run_star(star_row, jtgrid, bounds):
     aux_value = int_age if np.isfinite(int_age) else 999.0
     stellar_class = classify_star(logg_obs)
     safe_id = star_id.replace('/', '_')
+
+    # ── Skip if star is outside grid observable bounds ────────────────────────
+    import json
+    try:
+        with open('results/grid_obs_bounds.json') as _fj:
+            _gob = json.load(_fj)
+        if lum_obs > _gob['lum_max']:
+            print(f"  SKIP {star_id}: lum_obs={lum_obs:.2f} > grid lum_max={_gob['lum_max']:.2f} "
+                  f"— star above grid ceiling, luminosity constraint inactive")
+            return None
+    except FileNotFoundError:
+        pass  # bounds file not yet written; proceed anyway
 
     print(f"\n{'─' * 60}")
     print(f"Star: {star_id}  [{stellar_class}]")
@@ -568,13 +611,13 @@ if __name__ == '__main__':
     N_BURNIN  = args.n_burnin
     N_ITER    = args.n_iter
 
-    stars_to_run = load_apokasc()
-
     if args.combine:
         combine_chains()
         sys.exit(0)
 
-    jtgrid, bounds = load_grid()
+    jtgrid, bounds, grid_obs_bounds = load_grid()
+
+    stars_to_run = load_apokasc()
 
     if args.star_id is not None:
         matches = stars_to_run[stars_to_run['star_id'] == args.star_id]
