@@ -182,7 +182,6 @@ def load_apokasc(path='MeridithRomanApokascCalibLtest5ns3L.out'):
         | (raw['int_mass'] <= 0)
         | (raw['teff_obs'] <= 4000)
         | (raw['cn_class'] != 'RGB')
-        | (raw['mh_obs'] <= 0.15)
     )
 
     stars = raw[~bad].copy()
@@ -561,7 +560,13 @@ if __name__ == '__main__':
                         help='Run a single star by 0-based index in stars_to_run')
     parser.add_argument('--combine', action='store_true',
                         help='Combine all completed chains into summary outputs')
+    parser.add_argument('--n_walkers', type=int, default=32)
+    parser.add_argument('--n_burnin',  type=int, default=300)
+    parser.add_argument('--n_iter',    type=int, default=1000)
     args = parser.parse_args()
+    N_WALKERS = args.n_walkers
+    N_BURNIN  = args.n_burnin
+    N_ITER    = args.n_iter
 
     stars_to_run = load_apokasc()
 
