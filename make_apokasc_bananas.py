@@ -99,8 +99,14 @@ def banana_log_prob(pos, interp, teff_obs, lum_obs, teff_sigma, lum_sigma,
     met_lo, met_hi = bounds['initial_met']
     eep_lo, eep_hi = bounds['eep']
 
+    # Clip 0.1 dex inside each metallicity boundary to avoid the grid edge
+    # where interpolation is unreliable and walkers find spurious solutions.
+    MET_EDGE_BUFFER = 0.1
+    met_lo_eff = met_lo + MET_EDGE_BUFFER
+    met_hi_eff = met_hi - MET_EDGE_BUFFER
+
     if not (mass_lo < initial_mass < mass_hi and
-            met_lo < initial_met < met_hi and
+            met_lo_eff < initial_met < met_hi_eff and
             eep_lo < eep < eep_hi):
         return -np.inf, None
 
