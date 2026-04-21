@@ -239,7 +239,7 @@ def make_initial_positions(star_row, bounds, n_walkers, rng):
 def save_banana_plot(star_id, flat_samples, blobs_df,
                      teff_obs, lum_obs, logg_obs, mh_obs,
                      aux_value, stellar_class):
-    fig, axes = plt.subplots(1, 3, figsize=(16, 4))
+    fig, axes = plt.subplots(1, 2, figsize=(16, 4))
     safe_id = star_id.replace('/', '_')
 
     class_color = {'RGB': 'steelblue', 'clump': 'seagreen', 'unknown': 'grey'}
@@ -291,20 +291,6 @@ def save_banana_plot(star_id, flat_samples, blobs_df,
     ax.set_ylabel('Age (Gyr)', fontsize=11)
     ax.set_title('Median ± 1σ banana', fontsize=11)
     ax.set_ylim(bottom=0)
-    ax.legend(fontsize=8)
-
-    # ── Right: α_MLT and Y vs [Fe/H] (what was enforced) ─────────────────────
-    ax = axes[2]
-    feh_line = np.linspace(-1.0, 0.4, 100)
-    ml_lo = flat_samples['mixing_length'].min() if 'mixing_length' in flat_samples else 1.224
-    ml_hi = flat_samples['mixing_length'].max() if 'mixing_length' in flat_samples else 2.224
-    ax.plot(feh_line, [compute_ML(f, ml_lo, ml_hi) for f in feh_line],
-            '-', color='coral', lw=1.5, label='α_MLT = 0.02·[Fe/H]+1.94')
-    ax.plot(feh_line, [compute_y(f) for f in feh_line],
-            '--', color='steelblue', lw=1.5, label='Y (compute_y)')
-    ax.axvline(mh_obs, color='k', lw=1, ls='--', alpha=0.5)
-    ax.set_xlabel('[Fe/H]', fontsize=11)
-    ax.set_title('Enforced α_MLT and Y', fontsize=11)
     ax.legend(fontsize=8)
 
     n_eff = mask.sum()
