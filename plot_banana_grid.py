@@ -22,9 +22,23 @@ import warnings
 
 warnings.filterwarnings('ignore')
 
+# ── Read grid observable bounds (written by load_grid() in banana scripts) ────
+def _read_grid_obs_bounds(path='results/grid_obs_bounds.json'):
+    import json
+    try:
+        with open(path) as _f:
+            return json.load(_f)
+    except FileNotFoundError:
+        print(f"WARNING: {path} not found — LUM_MAX will not be applied. "
+              f"Run make_platinum_bananas.py first to generate it.")
+        return {}
+
+_grid_obs_bounds = _read_grid_obs_bounds()
+
 # ══════════════════════════════════════════════════════════════════════════════
 # SCIENCE SELECTION CUTS
 # Set to None to disable a cut entirely.
+# LUM_MAX is read from results/grid_obs_bounds.json — never hardcoded.
 # ══════════════════════════════════════════════════════════════════════════════
 
 TEFF_MIN   = None     # K  — no lower Teff cut
@@ -34,7 +48,7 @@ LOGG_MAX   = None     # dex — no upper logg cut (RGB class already limits to <
 MH_MIN     = None     # dex — no lower metallicity cut
 MH_MAX     = None     # dex — no upper metallicity cut
 LUM_MIN    = None     # log(L/Lsun) — no lower luminosity cut
-LUM_MAX    = None     # log(L/Lsun) — no upper luminosity cut
+LUM_MAX    = _grid_obs_bounds.get('lum_max', None)   # log(L/Lsun) — grid ceiling, read in situ
 AGE_MIN    = None     # Gyr — no lower age cut
 AGE_MAX    = None     # Gyr — no upper age cut
 MIN_SAMPLES = 100     # minimum number of valid MCMC samples to include a star
