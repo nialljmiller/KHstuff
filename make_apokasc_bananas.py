@@ -426,6 +426,9 @@ def save_banana_plot(star_id, flat_samples, blobs_df,
 
                         
     n_eff = mask.sum()
+    fig.subplots_adjust(top=0.95)
+    fig.savefig(f'results/apokasc/plots/{safe_id}.pdf', dpi=130, bbox_inches='tight')                        
+
     fig.suptitle(
         f"{star_id}  [{stellar_class}]\n"
         f"Teff={teff_obs:.0f} K   logg={logg_obs:.2f}   lum={lum_obs:.2f}   "
@@ -433,7 +436,6 @@ def save_banana_plot(star_id, flat_samples, blobs_df,
         fontsize=10, fontweight='bold', y=0.97
     )
 
-    fig.subplots_adjust(top=0.95)
     fig.savefig(f'results/apokasc/plots/{safe_id}.png', dpi=130, bbox_inches='tight')
     plt.close(fig)
 
