@@ -134,6 +134,29 @@ def banana_log_prob(pos, interp, teff_obs, lum_obs, teff_sigma, lum_sigma,
     return log_prob, star
 
 
+def filter_off_grid_samples(output, teff_obs, lum_obs, teff_sigma, n_sigma=3.0):
+    """
+    Remove samples where the interpolated model Teff or lum is more than
+    n_sigma away from the observed values. These are walkers that have
+    drifted to regions where the likelihood is spuriously non-zero.
+    """
+    lum_sigma = LUM_SIGMA_DEFAULT
+
+    teff_model = output['teff'].values
+    lum_model  = output['lum'].values
+
+    ok = (
+        np.isfinite(teff_model) & np.isfinite(lum_model) &
+        (np.abs(teff_model - teff_obs) / teff_sigma <= n_sigma) &
+        (np.abs(lum_model  - lum_obs)  / lum_sigma  <= n_sigma)
+    )
+    n_removed = (~ok).sum()
+    if n_removed > 0:
+        print(f"  Removed {n_removed:,} off-grid samples "
+              f"({100*n_removed/len(output):.1f}%) outside {n_sigma}σ in Teff or lum")
+    return output[ok].reset_index(drop=True)
+
+
 # ── Grid loading ──────────────────────────────────────────────────────────────
 def load_grid():
     print("Loading JT2017t12 grid...")
@@ -526,6 +549,8 @@ def run_star(star_row, jtgrid, bounds):
         axis=1,
     )
 
+    output = filter_off_grid_samples(output, teff_obs, lum_obs, teff_sigma)
+
     age_col = 'age' if 'age' in output.columns else 'Age(Gyr)'
     if age_col in output.columns:
         valid_ages = output[age_col].dropna()
@@ -595,7 +620,12 @@ def combine_chains():
         output['lum_obs'] = res['lum_obs']
         output['logg_obs'] = res['logg_obs']
         output['mh_obs'] = res['mh_obs']
-
+         
+        teff_obs   = res['teff_obs']
+        lum_obs    = res['lum_obs']
+        teff_sigma = max(res['e_teff'], 50.0)
+        output = filter_off_grid_samples(output, teff_obs, lum_obs, teff_sigma)
+       
         all_rows.append(output)
         banana_dict[star_id] = output
 
