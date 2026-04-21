@@ -408,8 +408,9 @@ def save_banana_plot(star_id, flat_samples, blobs_df,
         #if x_max / x_min > 30.0:
         #    ax_hist.set_xscale('log')
         #    ax_hist.set_xlim(1.0, x_max * 1.15)
-     else:
-        ax_hist.set_xlim(0.0, 1.0)
+                        
+    else:
+       ax_hist.set_xlim(0.0, 1.0)
 
     ax_hist.axhline(age_med, color='k', lw=2.0, label=answer_label)
     ax_hist.axhline(age_lo, color='b', lw=1.2, ls='--', label='Age IQR')
