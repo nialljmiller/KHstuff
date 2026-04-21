@@ -346,8 +346,8 @@ def save_banana_plot(star_id, flat_samples, blobs_df,
     # main banana panel so the answer line is visually shared.
     answer_label = rf"${age_med:.1f}^{{+{age_plus:.1f}}}_{{-{age_minus:.1f}}}$ Gyr"
     ax_main.axhline(age_med, color='k', lw=2.0, zorder=1)
-    ax_main.axhline(age_lo, color='k', lw=1.2, ls='--', zorder=1)
-    ax_main.axhline(age_hi, color='k', lw=1.2, ls='--', zorder=1)
+    ax_main.axhline(age_lo, color='b', lw=1.2, ls='--', zorder=1)
+    ax_main.axhline(age_hi, color='b', lw=1.2, ls='--', zorder=1)
 
     comp_label = None
     if np.isfinite(aux_value):
@@ -358,6 +358,7 @@ def save_banana_plot(star_id, flat_samples, blobs_df,
     ax_main.set_ylabel('Age inferred (Gyr)', fontsize=11)
     ax_main.set_xlim(x_lo, x_hi)
     ax_main.set_ylim(y_lo, y_hi)
+    ax_main.legend(loc='upper right', fontsize=8, frameon=True)
 
     # ── Top marginal: p([Fe/H]) sharing x with the main banana ────────────────
     x_grid = np.linspace(x_lo, x_hi, 400)
