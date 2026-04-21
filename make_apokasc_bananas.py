@@ -269,7 +269,6 @@ def make_initial_positions(star_row, bounds, n_walkers, rng):
 def save_banana_plot(star_id, flat_samples, blobs_df,
                      teff_obs, lum_obs, logg_obs, mh_obs,
                      aux_value, stellar_class):
-    fig, axes = plt.subplots(1, 2, figsize=(16, 4))
     safe_id = star_id.replace('/', '_')
 
     class_color = {'RGB': 'steelblue', 'clump': 'seagreen', 'unknown': 'grey'}
@@ -277,31 +276,47 @@ def save_banana_plot(star_id, flat_samples, blobs_df,
 
     age_col = 'age' if 'age' in blobs_df.columns else 'Age(Gyr)'
     if age_col not in blobs_df.columns:
-        plt.close(fig)
         return
 
     feh = flat_samples['initial_met'].values
     age = blobs_df[age_col].values
     mask = np.isfinite(feh) & np.isfinite(age)
     feh, age = feh[mask], age[mask]
+    if len(feh) < 5:
+        return
 
-    # ── Left: 2D density banana ───────────────────────────────────────────────
-    ax = axes[0]
-    if len(feh) > 10:
-        h = ax.hexbin(feh, age, gridsize=30, cmap='YlOrRd',
-                      mincnt=1, linewidths=0.2)
-        plt.colorbar(h, ax=ax, label='Sample count')
-    ax.axvline(mh_obs, color='k', lw=1.2, ls='--',
-               label=f'obs [M/H]={mh_obs:.2f}')
-    ax.set_xlabel('[Fe/H]', fontsize=11)
-    ax.set_ylabel('Age (Gyr)', fontsize=11)
-    ax.set_title(f'Banana: p(age, [Fe/H])  [{stellar_class}]', fontsize=11)
-    ax.set_ylim(bottom=0)
-    ax.legend(fontsize=8)
+    age_med = np.median(age)
+    age_lo = np.percentile(age, 16)
+    age_hi = np.percentile(age, 84)
+    age_plus = age_hi - age_med
+    age_minus = age_med - age_lo
 
-    # ── Middle: median banana curve with 1σ band ──────────────────────────────
-    ax = axes[1]
-    feh_bins = np.linspace(feh.min(), feh.max(), 30)
+    feh_min, feh_max = np.nanmin(feh), np.nanmax(feh)
+    feh_pad = 0.04 * max(np.nanptp(feh), 0.25)
+    age_pad = 0.05 * max(np.nanptp(age), 1.0)
+    x_lo = feh_min - feh_pad
+    x_hi = feh_max + feh_pad
+    y_lo = max(0.0, np.nanmin(age) - age_pad)
+    y_hi = np.nanmax(age) + age_pad
+
+    fig = plt.figure(figsize=(12.5, 6.1))
+    gs = fig.add_gridspec(
+        2, 2,
+        width_ratios=[4.8, 2.4],
+        height_ratios=[1.5, 4.5],
+        wspace=0.0,
+        hspace=0.0,
+    )
+
+    ax_top = fig.add_subplot(gs[0, 0])
+    ax_main = fig.add_subplot(gs[1, 0], sharex=ax_top)
+    ax_hist = fig.add_subplot(gs[1, 1], sharey=ax_main)
+    ax_empty = fig.add_subplot(gs[0, 1])
+    ax_empty.axis('off')
+
+    # ── Main banana: median relation with 16th–84th percentile band ──────────
+    n_feh_bins = int(np.clip(np.sqrt(len(feh)), 18, 36))
+    feh_bins = np.linspace(feh_min, feh_max, n_feh_bins)
     med_ages, lo_ages, hi_ages, feh_mids = [], [], [], []
     for j in range(len(feh_bins) - 1):
         mask_bin = (feh >= feh_bins[j]) & (feh < feh_bins[j + 1])
@@ -310,29 +325,86 @@ def save_banana_plot(star_id, flat_samples, blobs_df,
             med_ages.append(np.median(ages_bin))
             lo_ages.append(np.percentile(ages_bin, 16))
             hi_ages.append(np.percentile(ages_bin, 84))
-            feh_mids.append((feh_bins[j] + feh_bins[j + 1]) / 2)
+            feh_mids.append((feh_bins[j] + feh_bins[j + 1]) / 2.0)
+
     if med_ages:
-        feh_mids = np.array(feh_mids)
-        ax.fill_between(feh_mids, lo_ages, hi_ages,
-                        color=c, alpha=0.3, label='16–84th pct')
-        ax.plot(feh_mids, med_ages, '-', color=c, lw=2, label='Median')
-    ax.axvline(mh_obs, color='k', lw=1.2, ls='--')
-    ax.set_xlabel('[Fe/H]', fontsize=11)
-    ax.set_ylabel('Age (Gyr)', fontsize=11)
-    ax.set_title('Median ± 1σ banana', fontsize=11)
-    ax.set_ylim(bottom=0)
-    ax.legend(fontsize=8)
+        feh_mids = np.asarray(feh_mids)
+        med_ages = np.asarray(med_ages)
+        lo_ages = np.asarray(lo_ages)
+        hi_ages = np.asarray(hi_ages)
+        ax_main.fill_between(feh_mids, lo_ages, hi_ages, color=c, alpha=0.30, lw=0)
+        ax_main.plot(feh_mids, med_ages, color=c, lw=2.2)
+
+    obs_label = f'obs [M/H] = {mh_obs:.2f}'
+    ax_main.axvline(mh_obs, color='0.25', lw=1.4, ls='--', label=obs_label)
+    ax_top.axvline(mh_obs, color='0.25', lw=1.4, ls='--')
+
+    # The posterior summary lines drawn on the histogram also continue into the
+    # main banana panel so the answer line is visually shared.
+    answer_label = rf"${age_med:.1f}^{{+{age_plus:.1f}}}_{{-{age_minus:.1f}}}$ Gyr"
+    ax_main.axhline(age_med, color='k', lw=2.0, zorder=1)
+    ax_main.axhline(age_lo, color='k', lw=1.2, ls='--', zorder=1)
+    ax_main.axhline(age_hi, color='k', lw=1.2, ls='--', zorder=1)
+
+    comp_label = None
+    if np.isfinite(aux_value):
+        comp_label = f'IntAge: {aux_value:.1f} Gyr'
+        ax_main.axhline(aux_value, color='tomato', lw=1.2, ls=':', zorder=1)
+
+    ax_main.set_xlabel('[Fe/H] assumed', fontsize=11)
+    ax_main.set_ylabel('Age inferred (Gyr)', fontsize=11)
+    ax_main.set_xlim(x_lo, x_hi)
+    ax_main.set_ylim(y_lo, y_hi)
+
+    # ── Top marginal: p([Fe/H]) sharing x with the main banana ────────────────
+    x_grid = np.linspace(x_lo, x_hi, 400)
+    pdf = None
+    if len(np.unique(feh)) > 1:
+        try:
+            from scipy.stats import gaussian_kde
+            kde = gaussian_kde(feh)
+            pdf = kde(x_grid)
+        except Exception:
+            counts, edges = np.histogram(feh, bins=max(20, n_feh_bins), density=True)
+            centres = 0.5 * (edges[:-1] + edges[1:])
+            pdf = np.interp(x_grid, centres, counts, left=0.0, right=0.0)
+
+    if pdf is not None and np.all(np.isfinite(pdf)):
+        ax_top.fill_between(x_grid, 0.0, pdf, color='lightsteelblue', alpha=0.85)
+        ax_top.plot(x_grid, pdf, color=c, lw=2.0)
+    else:
+        ax_top.hist(feh, bins=max(20, n_feh_bins), density=True,
+                    color='lightsteelblue', alpha=0.85)
+
+    ax_top.set_ylabel(r'$p([\mathrm{Fe/H}])$', fontsize=11)
+    plt.setp(ax_top.get_xticklabels(), visible=False)
+
+    # ── Right marginal: age histogram sharing y with the main banana ──────────
+    age_bins = np.linspace(y_lo, y_hi, max(18, int(np.sqrt(len(age)))))
+    ax_hist.hist(age, bins=age_bins, orientation='horizontal', color='salmon',
+                 alpha=0.90, edgecolor='white', linewidth=0.6)
+    ax_hist.axhline(age_med, color='k', lw=2.0, label=answer_label)
+    ax_hist.axhline(age_lo, color='k', lw=1.2, ls='--')
+    ax_hist.axhline(age_hi, color='k', lw=1.2, ls='--')
+    if comp_label is not None:
+        ax_hist.axhline(aux_value, color='tomato', lw=1.2, ls=':', label=comp_label)
+
+    ax_hist.set_xlabel(r'$N$ samples', fontsize=11)
+    ax_hist.set_ylabel('Age (Gyr)', fontsize=11)
+    ax_hist.yaxis.tick_right()
+    ax_hist.yaxis.set_label_position('right')
+    ax_hist.legend(loc='upper right', fontsize=8, frameon=True)
 
     n_eff = mask.sum()
     fig.suptitle(
         f"{star_id}  [{stellar_class}]\n"
         f"Teff={teff_obs:.0f} K   logg={logg_obs:.2f}   lum={lum_obs:.2f}   "
-        f"obs[M/H]={mh_obs:.2f}   IntAge={aux_value:.3f}   "
-        f"N_samples={n_eff:,}",
-        fontsize=10, fontweight='bold'
+        f"obs[M/H]={mh_obs:.2f}   N_samples={n_eff:,}",
+        fontsize=10, fontweight='bold', y=0.97
     )
-    fig.tight_layout()
-    fig.savefig(f'results/apokasc/plots/{safe_id}.png', dpi=110, bbox_inches='tight')
+
+    fig.subplots_adjust(top=0.95)
+    fig.savefig(f'results/apokasc/plots/{safe_id}.png', dpi=130, bbox_inches='tight')
     plt.close(fig)
 
 
@@ -642,9 +714,9 @@ if __name__ == '__main__':
         n_total = len(stars_to_run)
         for i, (_, star_row) in enumerate(stars_to_run.iterrows()):
             safe_id = star_row['star_id'].replace('/', '_')
-            if safe_id in already_done:
-                print(f"[{i+1:3d}/{n_total}] {star_row['star_id']}  — already done, skipping")
-                continue
+            #if safe_id in already_done:
+            #    print(f"[{i+1:3d}/{n_total}] {star_row['star_id']}  — already done, skipping")
+            #    continue
             print(f"[{i+1:3d}/{n_total}]", end='')
             run_star(star_row, jtgrid, bounds)
 
