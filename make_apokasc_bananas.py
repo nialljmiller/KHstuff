@@ -383,9 +383,35 @@ def save_banana_plot(star_id, flat_samples, blobs_df,
     plt.setp(ax_top.get_xticklabels(), visible=False)
 
     # ── Right marginal: age histogram sharing y with the main banana ──────────
-    age_bins = np.linspace(y_lo, y_hi, max(18, int(np.sqrt(len(age)))))
-    ax_hist.hist(age, bins=age_bins, orientation='horizontal', color='salmon',
-                 alpha=0.90, edgecolor='white', linewidth=0.6)
+    # ── Right marginal: age histogram sharing y with the main banana ──────────
+    # The raw sqrt(N) bin rule becomes absurdly fine for long chains (e.g. 192k
+    # samples gives ~438 bins), which makes the histogram unreadable. Keep the
+    # binning visually stable and switch to log-counts when the dynamic range is
+    # large so the long age tail remains visible.
+    n_age_bins = int(np.clip(np.sqrt(len(age)) / 3.0, 18, 32))
+    age_bins = np.linspace(y_lo, y_hi, n_age_bins + 1)
+    age_counts, _, _ = ax_hist.hist(
+        age,
+        bins=age_bins,
+        orientation='horizontal',
+        color='salmon',
+        alpha=0.90,
+        edgecolor='white',
+        linewidth=0.6,
+    )
+
+    positive_counts = age_counts[age_counts > 0]
+    if positive_counts.size:
+        x_max = float(positive_counts.max())
+        x_min = float(max(1.0, positive_counts.min()))
+        if x_max / x_min > 30.0:
+            ax_hist.set_xscale('log')
+            ax_hist.set_xlim(1.0, x_max * 1.15)
+        else:
+            ax_hist.set_xlim(0.0, x_max * 1.08)
+    else:
+        ax_hist.set_xlim(0.0, 1.0)
+
     ax_hist.axhline(age_med, color='k', lw=2.0, label=answer_label)
     ax_hist.axhline(age_lo, color='k', lw=1.2, ls='--')
     ax_hist.axhline(age_hi, color='k', lw=1.2, ls='--')
@@ -398,6 +424,8 @@ def save_banana_plot(star_id, flat_samples, blobs_df,
     ax_hist.yaxis.set_label_position('right')
     ax_hist.legend(loc='upper right', fontsize=8, frameon=True)
 
+
+                        
     n_eff = mask.sum()
     fig.suptitle(
         f"{star_id}  [{stellar_class}]\n"
