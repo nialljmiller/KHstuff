@@ -413,10 +413,10 @@ def save_banana_plot(star_id, flat_samples, blobs_df,
         ax_hist.set_xlim(0.0, 1.0)
 
     ax_hist.axhline(age_med, color='k', lw=2.0, label=answer_label)
-    ax_hist.axhline(age_lo, color='k', lw=1.2, ls='--')
-    ax_hist.axhline(age_hi, color='k', lw=1.2, ls='--')
+    ax_hist.axhline(age_lo, color='b', lw=1.2, ls='--', label='Age IQR')
+    ax_hist.axhline(age_hi, color='b', lw=1.2, ls='--')
     if comp_label is not None:
-        ax_hist.axhline(aux_value, color='tomato', lw=1.2, ls=':', label=comp_label)
+        ax_hist.axhline(aux_value, color='purple', lw=1.2, ls=':', label=comp_label)
 
     ax_hist.set_xlabel(r'$N$ samples', fontsize=11)
     ax_hist.set_ylabel('Age (Gyr)', fontsize=11)
