@@ -292,8 +292,11 @@ def save_banana_plot(star_id, flat_samples, blobs_df,
     age_minus = age_med - age_lo
 
     feh_min, feh_max = np.nanmin(feh), np.nanmax(feh)
-    feh_pad = 0.04 * max(np.nanptp(feh), 0.25)
-    age_pad = 0.05 * max(np.nanptp(age), 1.0)
+    feh_range = np.ptp(feh) if len(feh) > 1 else 0.0
+    age_range = np.ptp(age) if len(age) > 1 else 0.0
+    feh_pad = 0.04 * max(feh_range, 0.25)
+    age_pad = 0.05 * max(age_range, 1.0)
+                        
     x_lo = feh_min - feh_pad
     x_hi = feh_max + feh_pad
     y_lo = max(0.0, np.nanmin(age) - age_pad)
