@@ -490,22 +490,6 @@ def save_banana_plot(star_id, flat_samples, blobs_df,
                    
     n_eff = mask.sum()
 
-    # ── Only plot APOKASC age line if it falls within the banana ─────────────
-    _age_obs = age[(feh >= mh_obs - 0.15) & (feh <= mh_obs + 0.15)]
-    _show_apokasc = False
-    if np.isfinite(aux_value) and len(_age_obs) >= 10:
-        b_lo = float(np.percentile(_age_obs, 16))
-        b_hi = float(np.percentile(_age_obs, 84))
-        _show_apokasc = (b_lo <= aux_value <= b_hi)
-    if not _show_apokasc:
-        # Remove the APOKASC line if it was already drawn
-        for line in ax_main.lines[:]:
-            if hasattr(line, '_apokasc_line') and line._apokasc_line:
-                line.remove()
-        for line in ax_hist.lines[:]:
-            if hasattr(line, '_apokasc_line') and line._apokasc_line:
-                line.remove()
-
     fig.subplots_adjust(top=0.93)
     fig.suptitle(
         f"{star_id}  [{stellar_class}]   N_samples={n_eff:,}",
