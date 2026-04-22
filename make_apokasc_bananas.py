@@ -166,8 +166,8 @@ def filter_off_grid_samples(output, teff_obs, lum_obs, teff_sigma, n_sigma=3.0):
 # ── Grid loading ──────────────────────────────────────────────────────────────
 def load_grid():
     print("Loading JT2017t12 grid...")
-    qstring = '201 <= eep'
-    jtgrid = kh.load_eep_grid("JT2017t12").query(qstring)
+    #qstring = '201 <= eep'
+    jtgrid = kh.load_eep_grid("JT2017t12")#.query(qstring)
     jtgrid['mass'] = jtgrid['Mass(Msun)']
     jtgrid['teff'] = 10**jtgrid['Log Teff(K)']
     jtgrid['lum'] = jtgrid['L/Lsun']
@@ -484,7 +484,7 @@ def save_banana_plot(star_id, flat_samples, blobs_df,
     ax_hist.set_ylabel('Age (Gyr)', fontsize=11)
     ax_hist.yaxis.tick_right()
     ax_hist.yaxis.set_label_position('right')
-    ax_hist.legend(loc='upper right', fontsize=8, frameon=True)
+    #ax_hist.legend(loc='upper right', fontsize=8, frameon=True)
 
 
                    
