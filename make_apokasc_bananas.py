@@ -333,7 +333,7 @@ def save_banana_plot(star_id, flat_samples, blobs_df,
     x_lo = feh_min - feh_pad
     x_hi = feh_max + feh_pad
     y_lo = max(0.0, np.nanmin(age) - age_pad)
-    y_hi = np.nanmax(age) + age_pad
+    y_hi = 20#np.nanmax(age) + age_pad
 
     fig = plt.figure(figsize=(12.5, 6.1))
     gs = fig.add_gridspec(
