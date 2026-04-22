@@ -365,10 +365,10 @@ def save_banana_plot(star_id, flat_samples, blobs_df,
         f"accept. frac: {acc:.3f}" if np.isfinite(acc) else "accept. frac: —",
     ]
     ax_empty.text(
-        0.98, 0.95, '\n'.join(info_lines),
+        1.0, 0.95, '\n'.join(info_lines),
         transform=ax_empty.transAxes,
         ha='right', va='top',
-        fontsize=8.5, family='monospace',
+        fontsize=8.0, family='monospace',
         bbox=dict(boxstyle='round,pad=0.4', facecolor='#f5f5f5',
                   edgecolor='#aaaaaa', alpha=0.9),
     )
@@ -491,10 +491,10 @@ def save_banana_plot(star_id, flat_samples, blobs_df,
     n_eff = mask.sum()
 
     fig.subplots_adjust(top=0.93)
-    fig.suptitle(
-        f"{star_id}  [{stellar_class}]   N_samples={n_eff:,}",
-        fontsize=10, fontweight='bold', y=0.99
-    )
+    #fig.suptitle(
+    #    f"{star_id}  [{stellar_class}]   N_samples={n_eff:,}",
+    #    fontsize=10, fontweight='bold', y=0.99
+    #)
 
     fig.savefig(os.path.join(out_dir, f'{safe_id}.pdf'), dpi=130, bbox_inches='tight')
     png_path = os.path.join(out_dir, f'{safe_id}.png')
