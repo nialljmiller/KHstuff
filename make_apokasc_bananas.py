@@ -460,18 +460,36 @@ def save_banana_plot(star_id, flat_samples, blobs_df,
     ax_hist.legend(loc='upper right', fontsize=8, frameon=True)
 
 
-                        
+                   
     n_eff = mask.sum()
-    fig.subplots_adjust(top=0.95)
-    fig.savefig(f'results/apokasc/plots/{safe_id}.pdf', dpi=130, bbox_inches='tight')                        
 
+    # ── Check: does APOKASC age intersect within 10% of banana at obs [M/H]? ──
+    # Within banana  = APOKASC age between 16th and 84th pct of our posterior.
+    # Within 10%     = within 10% of the banana width beyond either edge.
+    qc_str = ""
+    _age_obs = age[(feh >= mh_obs - 0.15) & (feh <= mh_obs + 0.15)]
+    if np.isfinite(aux_value) and len(_age_obs) >= 10:
+        b_lo  = float(np.percentile(_age_obs, 16))
+        b_hi  = float(np.percentile(_age_obs, 84))
+        width = b_hi - b_lo
+        tol   = 0.10 * width
+        if b_lo <= aux_value <= b_hi:
+            qc_str = "[APOKASC age within banana]"
+        elif (b_lo - tol) <= aux_value <= (b_hi + tol):
+            qc_str = "[APOKASC age within 10% of banana]"
+        else:
+            qc_str = "[APOKASC age OUTSIDE banana]"
+
+    fig.subplots_adjust(top=0.90)
     fig.suptitle(
         f"{star_id}  [{stellar_class}]\n"
-        f"Teff={teff_obs:.0f} K   logg={logg_obs:.2f}   lum={lum_obs:.2f}\n   "
-        f"obs[M/H]={mh_obs:.2f}   N_samples={n_eff:,}",
-        fontsize=10, fontweight='bold', y=0.97
+        f"Teff={teff_obs:.0f} K   logg={logg_obs:.2f}   lum={lum_obs:.2f}   "
+        f"obs[M/H]={mh_obs:.2f}   N_samples={n_eff:,}\n"
+        + (qc_str if qc_str else ""),
+        fontsize=10, fontweight='bold', y=0.99
     )
 
+    fig.savefig(f'results/apokasc/plots/{safe_id}.pdf', dpi=130, bbox_inches='tight')
     fig.savefig(f'results/apokasc/plots/{safe_id}.png', dpi=130, bbox_inches='tight')
     plt.close(fig)
 
@@ -591,6 +609,7 @@ def run_star(star_row, jtgrid, bounds):
         'lum_obs': lum_obs,
         'logg_obs': logg_obs,
         'mh_obs': mh_obs,
+        'alpha_fe': 0.0,
         'e_teff': e_teff,
         'int_age': int_age,
         'int_mass': int_mass,
@@ -648,6 +667,30 @@ def combine_chains():
     banana_df.to_csv('results/apokasc/banana_data.csv', index=False)
     print(f"Banana table: {len(banana_df):,} rows  ({len(banana_dict)} stars)")
     print("Saved to results/apokasc/banana_data.csv")
+
+    # ── Fundamental parameters table (one row per star) ───────────────────────
+    # Columns: Teff, Logg, Luminosity, Metallicity, AlphaFe, Mass, IntAge
+    fund_rows = []
+    for fname in sorted(chain_files):
+        with open(os.path.join(chain_dir, fname), 'rb') as f:
+            res = pickle.load(f)
+        fund_rows.append({
+            'star_id':      res['star_id'],
+            'stellar_class': res['stellar_class'],
+            'Teff_K':       res['teff_obs'],
+            'Logg_cgs':     res['logg_obs'],
+            'Lum_logLsun':  res['lum_obs'],
+            'FeH_obs':      res['mh_obs'],
+            'AlphaFe':      res.get('alpha_fe', 0.0),
+            'Mass_Msun':    res.get('int_mass', np.nan),
+            'IntAge_Gyr':   res.get('int_age', np.nan),
+            'e_Teff_K':     res.get('e_teff', np.nan),
+            'acceptance_fraction': res.get('acceptance_fraction', np.nan),
+        })
+    fund_df = pd.DataFrame(fund_rows).sort_values('FeH_obs').reset_index(drop=True)
+    fund_df.to_csv('results/apokasc/apokasc_fundamental_parameters.csv', index=False)
+    print(f"Fundamental parameters saved to results/apokasc/apokasc_fundamental_parameters.csv"
+          f"  ({len(fund_df)} stars)")
 
     with open('results/apokasc/bananas.pkl', 'wb') as f:
         pickle.dump(banana_dict, f)
