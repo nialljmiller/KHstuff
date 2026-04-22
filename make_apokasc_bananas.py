@@ -795,34 +795,21 @@ STAGED FOR STEP 4 (MDF sampling):
 
 
 # ── Best-fit scoring ──────────────────────────────────────────────────────────
-# Criteria (all must pass):
-#   1. |obs [M/H] - [Fe/H] mode| < MH_PEAK_TOL
-#   2. age_width / age_median     < AGE_WIDTH_FRAC
-#   3. |int_age - age_median| / age_median < APOKASC_AGE_TOL  (APOKASC within 10%)
+# Criterion: does the point (mh_obs, int_age) fall within the IQR
+# (25th–75th percentile) of the banana at the observed metallicity?
 
-BESTFIT_MH_PEAK_TOL    = 0.10   # dex — obs [M/H] vs sampled [Fe/H] mode
-BESTFIT_AGE_WIDTH_FRAC = 1.5    # (84th-16th) / median age
-BESTFIT_MIN_SAMPLES    = 500
-BESTFIT_FEH_WINDOW     = 0.15   # dex half-width around obs [M/H] for age read
-BESTFIT_APOKASC_TOL    = 0.10   # APOKASC age within 10% of inferred median
-
-
-def _feh_mode(feh_samples, bw=0.05):
-    from scipy.stats import gaussian_kde
-    try:
-        kde = gaussian_kde(feh_samples, bw_method=bw)
-        grid = np.linspace(feh_samples.min(), feh_samples.max(), 500)
-        return float(grid[np.argmax(kde(grid))])
-    except Exception:
-        return float(np.median(feh_samples))
+BESTFIT_MIN_SAMPLES = 500
+BESTFIT_FEH_WINDOW  = 0.15   # dex half-width around obs [M/H] for IQR read
 
 
 def score_chain_bestfit(res):
     """
-    Score one chain against the best-fit criteria.
+    Pass criterion: does the point (mh_obs, int_age) fall within the IQR
+    (25th–75th percentile) of the banana at the observed metallicity?
+    Fast — array ops only, no KDE.
     Returns (metrics_dict, passes_bool), or (None, False) if unscorable.
     """
-    output = res.get('output')
+    output  = res.get('output')
     if output is None:
         return None, False
 
@@ -830,40 +817,26 @@ def score_chain_bestfit(res):
     if age_col not in output.columns:
         return None, False
 
-    feh_all = output['initial_met'].values
-    age_all = output[age_col].values
-    ok      = np.isfinite(feh_all) & np.isfinite(age_all) & (age_all > 0)
-    feh     = feh_all[ok]
-    age     = age_all[ok]
-
-    if len(feh) < BESTFIT_MIN_SAMPLES:
-        return None, False
-
     mh_obs  = float(res['mh_obs'])
     int_age = float(res.get('int_age', np.nan))
-
     if not np.isfinite(int_age):
-        return None, False  # can't evaluate APOKASC criterion
-
-    # ── 1. [Fe/H] mode offset ─────────────────────────────────────────────────
-    mode      = _feh_mode(feh)
-    mh_offset = abs(mode - mh_obs)
-
-    # ── 2. Age width at obs [M/H] ──────────────────────────────────────────────
-    mask_obs = (feh >= mh_obs - BESTFIT_FEH_WINDOW) & (feh <= mh_obs + BESTFIT_FEH_WINDOW)
-    if mask_obs.sum() < 20:
         return None, False
 
-    age_obs        = age[mask_obs]
-    age_median     = float(np.median(age_obs))
-    age_lo         = float(np.percentile(age_obs, 16))
-    age_hi         = float(np.percentile(age_obs, 84))
-    age_width      = age_hi - age_lo
-    age_width_frac = age_width / max(age_median, 1e-6)
+    feh = output['initial_met'].values
+    age = output[age_col].values
+    ok  = np.isfinite(feh) & np.isfinite(age) & (age > 0)
 
-    # ── 3. APOKASC age agreement ───────────────────────────────────────────────
-    apokasc_frac      = abs(int_age - age_median) / max(age_median, 1e-6)
-    apokasc_in_banana = bool(age_lo <= int_age <= age_hi)
+    if ok.sum() < BESTFIT_MIN_SAMPLES:
+        return None, False
+
+    mask = ok & (feh >= mh_obs - BESTFIT_FEH_WINDOW) & (feh <= mh_obs + BESTFIT_FEH_WINDOW)
+    if mask.sum() < 20:
+        return None, False
+
+    age_at_obs = age[mask]
+    q25 = float(np.percentile(age_at_obs, 25))
+    q75 = float(np.percentile(age_at_obs, 75))
+    passes = bool(q25 <= int_age <= q75)
 
     metrics = {
         'star_id':           res['star_id'],
@@ -876,23 +849,11 @@ def score_chain_bestfit(res):
         'AlphaFe':           float(res.get('alpha_fe', 0.0)),
         'Mass_Msun':         float(res.get('int_mass', np.nan)),
         'IntAge_Gyr':        round(int_age, 2),
-        'inferred_age_med':  round(age_median, 2),
-        'inferred_age_lo':   round(age_lo, 2),
-        'inferred_age_hi':   round(age_hi, 2),
-        'age_width_frac':    round(age_width_frac, 3),
-        'feh_mode':          round(mode, 3),
-        'mh_offset':         round(mh_offset, 3),
-        'apokasc_age_frac':  round(apokasc_frac, 3),
-        'apokasc_in_banana': apokasc_in_banana,
+        'banana_q25':        round(q25, 2),
+        'banana_q75':        round(q75, 2),
         'acceptance_frac':   float(res.get('acceptance_fraction', np.nan)),
         'n_samples':         int(ok.sum()),
     }
-
-    passes = (
-        mh_offset      <= BESTFIT_MH_PEAK_TOL    and
-        age_width_frac <= BESTFIT_AGE_WIDTH_FRAC  and
-        apokasc_frac   <= BESTFIT_APOKASC_TOL
-    )
 
     return metrics, passes
 
@@ -941,21 +902,16 @@ def make_bestfit_grid(png_paths, out_path, n_cols=3):
 
 # ── Best-fit TXT report ────────────────────────────────────────────────────────
 def write_bestfit_txt(best_metrics, out_path):
-    """
-    Write a human-readable fundamental-parameters table for best-fit stars.
-    """
     lines = []
     lines.append("=" * 100)
     lines.append("APOKASC BEST-FIT VALIDATION STARS")
     lines.append(
-        f"Criteria:  |obs[M/H] - [Fe/H] mode| < {BESTFIT_MH_PEAK_TOL} dex  |  "
-        f"age_width/median < {BESTFIT_AGE_WIDTH_FRAC}  |  "
-        f"|IntAge - inferred| / inferred < {BESTFIT_APOKASC_TOL*100:.0f}%"
+        f"Criterion: APOKASC (mh_obs, int_age) falls within the IQR (25th–75th pct) "
+        f"of the banana at obs [M/H] ± {BESTFIT_FEH_WINDOW} dex"
     )
     lines.append(
         "Note: stars suitable for inclusion in the paper should have APOKASC metallicity\n"
-        "      and APOKASC age intersecting within 10% of the banana (ideally within\n"
-        "      the 16–84th percentile band)."
+        "      and APOKASC age intersecting within the banana (ideally within the IQR)."
     )
     lines.append("=" * 100)
     lines.append("")
@@ -964,8 +920,7 @@ def write_bestfit_txt(best_metrics, out_path):
         f"{'Star ID':<32}  {'Class':>5}  "
         f"{'Teff':>6}  {'e_Teff':>6}  {'Logg':>6}  {'Lum':>6}  "
         f"{'[Fe/H]':>6}  {'[a/Fe]':>6}  {'Mass':>5}  "
-        f"{'IntAge':>7}  {'Inf.med':>7}  {'Inf.lo':>6}  {'Inf.hi':>6}  "
-        f"{'Wid/med':>7}  {'AK%err':>6}  {'InBan':>5}  "
+        f"{'IntAge':>7}  {'Q25':>6}  {'Q75':>6}  "
         f"{'AccFrac':>7}  {'N_samp':>8}"
     )
     lines.append(col_header)
@@ -975,16 +930,12 @@ def write_bestfit_txt(best_metrics, out_path):
         e_teff_str = f"{m['e_Teff_K']:.0f}" if np.isfinite(m['e_Teff_K']) else "  —"
         mass_str   = f"{m['Mass_Msun']:.3f}" if np.isfinite(m['Mass_Msun']) else "  —  "
         acc_str    = f"{m['acceptance_frac']:.3f}" if np.isfinite(m['acceptance_frac']) else "  —  "
-        in_ban     = "YES" if m['apokasc_in_banana'] else "no"
         lines.append(
             f"{m['star_id']:<32}  {m['stellar_class']:>5}  "
             f"{m['Teff_K']:>6.0f}  {e_teff_str:>6}  {m['Logg_cgs']:>6.3f}  "
             f"{m['Lum_logLsun']:>6.3f}  "
             f"{m['FeH_obs']:>6.3f}  {m['AlphaFe']:>6.2f}  {mass_str:>5}  "
-            f"{m['IntAge_Gyr']:>7.2f}  {m['inferred_age_med']:>7.2f}  "
-            f"{m['inferred_age_lo']:>6.2f}  {m['inferred_age_hi']:>6.2f}  "
-            f"{m['age_width_frac']:>7.3f}  "
-            f"{m['apokasc_age_frac']*100:>5.1f}%  {in_ban:>5}  "
+            f"{m['IntAge_Gyr']:>7.2f}  {m['banana_q25']:>6.2f}  {m['banana_q75']:>6.2f}  "
             f"{acc_str:>7}  {m['n_samples']:>8,}"
         )
 
@@ -1084,9 +1035,8 @@ def replot_best_fits():
         if png_path:
             png_paths.append(png_path)
         print(f"  [{i+1}/{len(best_chains)}] {res['star_id']}  "
-              f"(APOKASC err={metrics['apokasc_age_frac']*100:.1f}%  "
-              f"width/med={metrics['age_width_frac']:.2f}  "
-              f"Δ[M/H]={metrics['mh_offset']:.3f})")
+              f"(IntAge={metrics['IntAge_Gyr']:.2f}  Q25={metrics['banana_q25']:.2f}  "
+              f"Q75={metrics['banana_q75']:.2f})")
 
     # ── Step 3: grid of all best-fit plots ────────────────────────────────────
     grid_path = 'results/apokasc/plots/best_fits_grid.png'
