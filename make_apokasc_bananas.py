@@ -1013,7 +1013,7 @@ def replot_best_fits():
         return
 
     # Sort by APOKASC age error ascending
-    best_chains.sort(key=lambda x: x[1]['apokasc_age_frac'])
+    best_chains.sort(key=lambda x: x[1]['IntAge_Gyr'])
 
     # ── Step 2: make individual plots for best-fit stars only ─────────────────
     png_paths = []
