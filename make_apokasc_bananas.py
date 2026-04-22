@@ -371,17 +371,22 @@ def save_banana_plot(star_id, flat_samples, blobs_df,
     ax_main.axvline(mh_obs, color='0.25', lw=1.4, ls='--', label=obs_label)
     ax_top.axvline(mh_obs, color='0.25', lw=1.4, ls='--')
 
-    # The posterior summary lines drawn on the histogram also continue into the
-    # main banana panel so the answer line is visually shared.
-    answer_label = rf"${age_med:.1f}^{{+{age_plus:.1f}}}_{{-{age_minus:.1f}}}$ Gyr"
-    ax_main.axhline(age_med, color='k', lw=2.0, zorder=1)
-    ax_main.axhline(age_lo, color='b', lw=1.2, ls='--', zorder=1)
-    ax_main.axhline(age_hi, color='b', lw=1.2, ls='--', zorder=1)
+    # ── Age reference lines ───────────────────────────────────────────────────
+    # Solid black  = OUR inferred age (median of posterior at obs [M/H])
+    # Dashed red   = APOKASC asteroseismic age (ground truth)
+    # Blue dashes  = 16th-84th percentile of our posterior
+    inferred_label = (rf"Inferred: ${age_med:.1f}"
+                      rf"^{{+{age_plus:.1f}}}_{{-{age_minus:.1f}}}$ Gyr")
+    ax_main.axhline(age_med, color='k',         lw=2.0, ls='-',  zorder=2, label=inferred_label)
+    ax_main.axhline(age_lo,  color='steelblue', lw=1.2, ls='--', zorder=2)
+    ax_main.axhline(age_hi,  color='steelblue', lw=1.2, ls='--', zorder=2,
+                    label='Inferred 16-84th pct')
 
     comp_label = None
     if np.isfinite(aux_value):
-        comp_label = f'IntAge: {aux_value:.1f} Gyr'
-        ax_main.axhline(aux_value, color='tomato', lw=1.2, ls=':', zorder=1)
+        comp_label = f'APOKASC: {aux_value:.1f} Gyr'
+        ax_main.axhline(aux_value, color='crimson', lw=2.0, ls='--', zorder=2,
+                        label=comp_label)
 
     ax_main.set_xlabel('[Fe/H] assumed', fontsize=11)
     ax_main.set_ylabel('Age inferred (Gyr)', fontsize=11)
@@ -442,11 +447,11 @@ def save_banana_plot(star_id, flat_samples, blobs_df,
     else:
        ax_hist.set_xlim(0.0, 1.0)
 
-    ax_hist.axhline(age_med, color='k', lw=2.0, label=answer_label)
-    ax_hist.axhline(age_lo, color='b', lw=1.2, ls='--', label='Age IQR')
-    ax_hist.axhline(age_hi, color='b', lw=1.2, ls='--')
+    ax_hist.axhline(age_med, color='k',         lw=2.0, ls='-',  label=inferred_label)
+    ax_hist.axhline(age_lo,  color='steelblue', lw=1.2, ls='--', label='Inferred 16-84th pct')
+    ax_hist.axhline(age_hi,  color='steelblue', lw=1.2, ls='--')
     if comp_label is not None:
-        ax_hist.axhline(aux_value, color='purple', lw=1.2, ls=':', label=comp_label)
+        ax_hist.axhline(aux_value, color='crimson', lw=2.0, ls='--', label=comp_label)
 
     ax_hist.set_xlabel(r'$N$ samples', fontsize=11)
     ax_hist.set_ylabel('Age (Gyr)', fontsize=11)
@@ -736,18 +741,47 @@ STAGED FOR STEP 4 (MDF sampling):
 """)
 
 
+# ── Replot all existing chains ────────────────────────────────────────────────
+def replot_all_chains():
+    chain_dir = 'results/apokasc/chains'
+    chain_files = sorted(f for f in os.listdir(chain_dir) if f.endswith('.pkl'))
+    print(f"Replotting {len(chain_files)} chains...")
+    for i, fname in enumerate(chain_files):
+        path = os.path.join(chain_dir, fname)
+        try:
+            with open(path, 'rb') as f:
+                res = pickle.load(f)
+        except Exception as e:
+            print(f"  SKIP {fname}: {e}")
+            continue
+        flat_samples = res.get('flat_samples', res.get('output'))
+        blobs_df     = res.get('blobs_df',     res.get('output'))
+        if flat_samples is None or blobs_df is None:
+            print(f"  SKIP {fname}: missing flat_samples or blobs_df")
+            continue
+        int_age  = float(res.get('int_age', np.nan))
+        aux_value = int_age if np.isfinite(int_age) else np.nan
+        save_banana_plot(
+            res['star_id'], flat_samples, blobs_df,
+            res['teff_obs'], res['lum_obs'], res['logg_obs'], res['mh_obs'],
+            aux_value, res['stellar_class'],
+        )
+        print(f"  [{i+1}/{len(chain_files)}] {res['star_id']}")
+    print("Replot done.")
+
+
 # ── Entry point ───────────────────────────────────────────────────────────────
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='APOKASC banana MCMC')
-    parser.add_argument('--star_id', type=str, default=None,
-                        help='Run a single star by ID')
-    parser.add_argument('--star_index', type=int, default=None,
-                        help='Run a single star by 0-based index in stars_to_run')
-    parser.add_argument('--combine', action='store_true',
+    parser.add_argument('--star_id',    type=str,  default=None)
+    parser.add_argument('--star_index', type=int,  default=None)
+    parser.add_argument('--combine',    action='store_true',
                         help='Combine all completed chains into summary outputs')
-    parser.add_argument('--n_walkers', type=int, default=32)
-    parser.add_argument('--n_burnin',  type=int, default=300)
-    parser.add_argument('--n_iter',    type=int, default=1000)
+    parser.add_argument('--replot',     action='store_true',
+                        help='Regenerate plots for all existing chains without rerunning MCMC')
+    parser.add_argument('--n_walkers',  type=int,  default=32)
+    parser.add_argument('--n_burnin',   type=int,  default=300)
+    parser.add_argument('--n_iter',     type=int,  default=1000)
     args = parser.parse_args()
     N_WALKERS = args.n_walkers
     N_BURNIN  = args.n_burnin
@@ -755,6 +789,10 @@ if __name__ == '__main__':
 
     if args.combine:
         combine_chains()
+        sys.exit(0)
+
+    if args.replot:
+        replot_all_chains()
         sys.exit(0)
 
     jtgrid, bounds, grid_obs_bounds = load_grid()
@@ -784,9 +822,9 @@ if __name__ == '__main__':
         n_total = len(stars_to_run)
         for i, (_, star_row) in enumerate(stars_to_run.iterrows()):
             safe_id = star_row['star_id'].replace('/', '_')
-            #if safe_id in already_done:
-            #    print(f"[{i+1:3d}/{n_total}] {star_row['star_id']}  — already done, skipping")
-            #    continue
+            if safe_id in already_done:
+                print(f"[{i+1:3d}/{n_total}] {star_row['star_id']}  — already done, skipping")
+                continue
             print(f"[{i+1:3d}/{n_total}]", end='')
             run_star(star_row, jtgrid, bounds)
 
