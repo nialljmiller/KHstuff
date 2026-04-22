@@ -363,7 +363,7 @@ def save_banana_plot(star_id, flat_samples, blobs_df,
         f"accept. frac: {acc:.3f}" if np.isfinite(acc) else "accept. frac: —",
     ]
     ax_empty.text(
-        1.10, 0.95, '\n'.join(info_lines),
+        0.98, 0.95, '\n'.join(info_lines),
         transform=ax_empty.transAxes,
         ha='right', va='top',
         fontsize=8.5, family='monospace',
@@ -402,15 +402,15 @@ def save_banana_plot(star_id, flat_samples, blobs_df,
     # Blue dashes  = 16th-84th percentile of our posterior
     inferred_label = (rf"Inferred: ${age_med:.1f}"
                       rf"^{{+{age_plus:.1f}}}_{{-{age_minus:.1f}}}$ Gyr")
-    ax_main.axhline(age_med, color='k',         lw=2.0, ls='-',  zorder=2, label=inferred_label)
-    ax_main.axhline(age_lo,  color='steelblue', lw=1.2, ls='--', zorder=2)
-    ax_main.axhline(age_hi,  color='steelblue', lw=1.2, ls='--', zorder=2,
+    ax_main.axhline(age_med, color='steelblue', lw=1.8, ls='--', zorder=2, label=inferred_label)
+    ax_main.axhline(age_lo,  color='steelblue', lw=1.0, ls=':',  zorder=2)
+    ax_main.axhline(age_hi,  color='steelblue', lw=1.0, ls=':',  zorder=2,
                     label='Inferred 16-84th pct')
 
     comp_label = None
     if np.isfinite(aux_value):
         comp_label = f'APOKASC: {aux_value:.1f} Gyr'
-        _aline = ax_main.axhline(aux_value, color='crimson', lw=2.0, ls='--', zorder=3,
+        _aline = ax_main.axhline(aux_value, color='k', lw=2.0, ls='-', zorder=2,
                                   label=comp_label)
         _aline._apokasc_line = True
 
@@ -473,11 +473,11 @@ def save_banana_plot(star_id, flat_samples, blobs_df,
     else:
        ax_hist.set_xlim(0.0, 1.0)
 
-    ax_hist.axhline(age_med, color='k',         lw=2.0, ls='-',  label=inferred_label)
-    ax_hist.axhline(age_lo,  color='steelblue', lw=1.2, ls='--', label='Inferred 16-84th pct')
-    ax_hist.axhline(age_hi,  color='steelblue', lw=1.2, ls='--')
+    ax_hist.axhline(age_med, color='steelblue', lw=1.8, ls='--', label=inferred_label)
+    ax_hist.axhline(age_lo,  color='steelblue', lw=1.0, ls=':',  label='Inferred 16-84th pct')
+    ax_hist.axhline(age_hi,  color='steelblue', lw=1.0, ls=':')
     if comp_label is not None:
-        _hline = ax_hist.axhline(aux_value, color='crimson', lw=2.0, ls='--', label=comp_label, zorder = 3)
+        _hline = ax_hist.axhline(aux_value, color='k', lw=2.0, ls='-', label=comp_label)
         _hline._apokasc_line = True
 
     ax_hist.set_xlabel(r'$N$ samples', fontsize=11)
