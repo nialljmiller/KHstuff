@@ -166,8 +166,8 @@ def filter_off_grid_samples(output, teff_obs, lum_obs, teff_sigma, n_sigma=3.0):
 # ── Grid loading ──────────────────────────────────────────────────────────────
 def load_grid():
     print("Loading JT2017t12 grid...")
-    #qstring = '201 <= eep'
-    jtgrid = kh.load_eep_grid("JT2017t12")#.query(qstring)
+    qstring = '201 <= eep'
+    jtgrid = kh.load_eep_grid("JT2017t12").query(qstring)
     jtgrid['mass'] = jtgrid['Mass(Msun)']
     jtgrid['teff'] = 10**jtgrid['Log Teff(K)']
     jtgrid['lum'] = jtgrid['L/Lsun']
@@ -215,12 +215,18 @@ def load_apokasc(path='MeridithRomanApokascCalibLtest5ns3L.out'):
         'Fe/H': 'mh_obs',
         'Teff_err': 'e_teff_obs',
         'IntAge': 'int_age',
+        'IntAge_err': 'e_int_age',
         'IntMass': 'int_mass',
         'C/N': 'cn_class',
+        'Fe/H_err': 'e_mh_obs',
     })
 
     if 'e_teff_obs' not in raw.columns:
         raw['e_teff_obs'] = 100.0
+    if 'e_mh_obs' not in raw.columns:
+        raw['e_mh_obs'] = 0.1
+    if 'e_int_age' not in raw.columns:
+        raw['e_int_age'] = np.nan
 
     bad = (
         (raw['int_age'] <= 0)
@@ -300,6 +306,7 @@ def save_banana_plot(star_id, flat_samples, blobs_df,
                      aux_value, stellar_class,
                      alpha_fe=0.0, int_mass=float('nan'), e_teff=float('nan'),
                      acc=float('nan'),
+                     e_mh_obs=0.1, e_int_age=float('nan'),
                      out_dir='results/apokasc/plots'):
     safe_id = star_id.replace('/', '_')
     os.makedirs(out_dir, exist_ok=True)
@@ -321,8 +328,6 @@ def save_banana_plot(star_id, flat_samples, blobs_df,
     age_med = np.median(age)
     age_lo = np.percentile(age, 16)
     age_hi = np.percentile(age, 84)
-    age_plus = age_hi - age_med
-    age_minus = age_med - age_lo
 
     feh_min, feh_max = np.nanmin(feh), np.nanmax(feh)
     feh_range = np.ptp(feh) if len(feh) > 1 else 0.0
@@ -333,7 +338,7 @@ def save_banana_plot(star_id, flat_samples, blobs_df,
     x_lo = feh_min - feh_pad
     x_hi = feh_max + feh_pad
     y_lo = max(0.0, np.nanmin(age) - age_pad)
-    y_hi = 20#np.nanmax(age) + age_pad
+    y_hi = np.nanmax(age) + age_pad
 
     fig = plt.figure(figsize=(12.5, 6.1))
     gs = fig.add_gridspec(
@@ -365,10 +370,10 @@ def save_banana_plot(star_id, flat_samples, blobs_df,
         f"accept. frac: {acc:.3f}" if np.isfinite(acc) else "accept. frac: —",
     ]
     ax_empty.text(
-        1.0, 0.95, '\n'.join(info_lines),
+        0.98, 0.95, '\n'.join(info_lines),
         transform=ax_empty.transAxes,
         ha='right', va='top',
-        fontsize=8.0, family='monospace',
+        fontsize=8.5, family='monospace',
         bbox=dict(boxstyle='round,pad=0.4', facecolor='#f5f5f5',
                   edgecolor='#aaaaaa', alpha=0.9),
     )
@@ -398,22 +403,36 @@ def save_banana_plot(star_id, flat_samples, blobs_df,
     ax_main.axvline(mh_obs, color='0.25', lw=1.4, ls='--', label=obs_label)
     ax_top.axvline(mh_obs, color='0.25', lw=1.4, ls='--')
 
-    # ── Age reference lines ───────────────────────────────────────────────────
-    # Solid black  = OUR inferred age (median of posterior at obs [M/H])
-    # Dashed red   = APOKASC asteroseismic age (ground truth)
-    # Blue dashes  = 16th-84th percentile of our posterior
-    inferred_label = (rf"Inferred: ${age_med:.1f}"
-                      rf"^{{+{age_plus:.1f}}}_{{-{age_minus:.1f}}}$ Gyr")
-    ax_main.axhline(age_med, color='steelblue', lw=1.8, ls='--', zorder=2, label=inferred_label)
-    ax_main.axhline(age_lo,  color='steelblue', lw=1.0, ls=':',  zorder=2)
-    ax_main.axhline(age_hi,  color='steelblue', lw=1.0, ls=':',  zorder=2,
-                    label='Inferred 16-84th pct')
+    # ── Errorbar points at obs [M/H] ──────────────────────────────────────────
+    # Inferred point: median + 16th/84th from samples within ±FEH_WINDOW of mh_obs
+    _feh_mask = (feh >= mh_obs - BESTFIT_FEH_WINDOW) & (feh <= mh_obs + BESTFIT_FEH_WINDOW)
+    _inf_med = age_med  # fallback to global median if window is empty
+    if _feh_mask.sum() >= 5:
+        _age_at_obs = age[_feh_mask]
+        _inf_med = float(np.median(_age_at_obs))
+        _inf_lo  = float(np.percentile(_age_at_obs, 16))
+        _inf_hi  = float(np.percentile(_age_at_obs, 84))
+        ax_main.errorbar(
+            mh_obs, _inf_med,
+            yerr=[[_inf_med - _inf_lo], [_inf_hi - _inf_med]],
+            xerr=e_mh_obs,
+            fmt='o', color='steelblue', ms=7, lw=1.8,
+            capsize=4, zorder=5, label='Inferred',
+        )
 
+    # APOKASC point: shifted +0.05 dex right so it doesn't overlap inferred point
+    _APOKASC_X_OFFSET = 0.05
     comp_label = None
     if np.isfinite(aux_value):
         comp_label = f'APOKASC: {aux_value:.1f} Gyr'
-        _aline = ax_main.axhline(aux_value, color='k', lw=2.0, ls='-', zorder=2,
-                                  label=comp_label)
+        _yerr = [[e_int_age], [e_int_age]] if np.isfinite(e_int_age) else None
+        ax_main.errorbar(
+            mh_obs + _APOKASC_X_OFFSET, aux_value,
+            yerr=_yerr,
+            xerr=e_mh_obs,
+            fmt='s', color='k', ms=7, lw=1.8,
+            capsize=4, zorder=5, label='APOKASC',
+        )
 
     ax_main.set_xlabel('[Fe/H] assumed', fontsize=11)
     ax_main.set_ylabel('Age inferred (Gyr)', fontsize=11)
@@ -474,27 +493,25 @@ def save_banana_plot(star_id, flat_samples, blobs_df,
     else:
        ax_hist.set_xlim(0.0, 1.0)
 
-    ax_hist.axhline(age_med, color='steelblue', lw=1.8, ls='--', label=inferred_label)
-    ax_hist.axhline(age_lo,  color='steelblue', lw=1.0, ls=':',  label='Inferred 16-84th pct')
-    ax_hist.axhline(age_hi,  color='steelblue', lw=1.0, ls=':')
-    if comp_label is not None:
-        _hline = ax_hist.axhline(aux_value, color='k', lw=2.0, ls='-', label=comp_label)
+    ax_hist.axhline(_inf_med, color='steelblue', lw=1.5, ls='--', zorder=2)
+    if np.isfinite(aux_value):
+        ax_hist.axhline(aux_value, color='k', lw=1.5, ls='-', zorder=2)
 
     ax_hist.set_xlabel(r'$N$ samples', fontsize=11)
     ax_hist.set_ylabel('Age (Gyr)', fontsize=11)
     ax_hist.yaxis.tick_right()
     ax_hist.yaxis.set_label_position('right')
-    #ax_hist.legend(loc='upper right', fontsize=8, frameon=True)
+    ax_hist.legend(loc='upper right', fontsize=8, frameon=True)
 
 
                    
     n_eff = mask.sum()
 
     fig.subplots_adjust(top=0.93)
-    #fig.suptitle(
-    #    f"{star_id}  [{stellar_class}]   N_samples={n_eff:,}",
-    #    fontsize=10, fontweight='bold', y=0.99
-    #)
+    fig.suptitle(
+        f"{star_id}  [{stellar_class}]   N_samples={n_eff:,}",
+        fontsize=10, fontweight='bold', y=0.99
+    )
 
     fig.savefig(os.path.join(out_dir, f'{safe_id}.pdf'), dpi=130, bbox_inches='tight')
     png_path = os.path.join(out_dir, f'{safe_id}.png')
@@ -512,7 +529,9 @@ def run_star(star_row, jtgrid, bounds):
     mh_obs = float(star_row['mh_obs'])
     e_teff = float(star_row['e_teff_obs'])
     int_age = float(star_row['int_age']) if 'int_age' in star_row else np.nan
+    e_int_age = float(star_row['e_int_age']) if 'e_int_age' in star_row else np.nan
     int_mass = float(star_row['int_mass']) if 'int_mass' in star_row else np.nan
+    e_mh_obs = float(star_row['e_mh_obs']) if 'e_mh_obs' in star_row else 0.1
     aux_value = int_age if np.isfinite(int_age) else 999.0
     stellar_class = classify_star(logg_obs)
     safe_id = star_id.replace('/', '_')
@@ -609,6 +628,7 @@ def run_star(star_row, jtgrid, bounds):
         teff_obs, lum_obs, logg_obs, mh_obs,
         aux_value, stellar_class,
         alpha_fe=0.0, int_mass=int_mass, e_teff=e_teff, acc=acc,
+        e_mh_obs=e_mh_obs, e_int_age=e_int_age,
     )
     print(f"  Plot saved: results/apokasc/plots/{safe_id}.png")
 
@@ -621,7 +641,9 @@ def run_star(star_row, jtgrid, bounds):
         'mh_obs': mh_obs,
         'alpha_fe': 0.0,
         'e_teff': e_teff,
+        'e_mh_obs': e_mh_obs,
         'int_age': int_age,
+        'e_int_age': e_int_age,
         'int_mass': int_mass,
         'flat_samples': flat_samples,
         'blobs_df': blobs_df,
@@ -977,6 +999,8 @@ def replot_all_chains():
             int_mass=res.get('int_mass', float('nan')),
             e_teff=res.get('e_teff', float('nan')),
             acc=res.get('acceptance_fraction', float('nan')),
+            e_mh_obs=res.get('e_mh_obs', 0.1),
+            e_int_age=res.get('e_int_age', float('nan')),
             out_dir=plots_dir,
         )
         print(f"  [{i+1}/{len(chain_files)}] {res['star_id']}")
@@ -1030,6 +1054,8 @@ def replot_best_fits():
             int_mass=res.get('int_mass', float('nan')),
             e_teff=res.get('e_teff', float('nan')),
             acc=res.get('acceptance_fraction', float('nan')),
+            e_mh_obs=res.get('e_mh_obs', 0.1),
+            e_int_age=res.get('e_int_age', float('nan')),
             out_dir=bestfit_dir,
         )
         if png_path:
