@@ -404,7 +404,7 @@ def save_banana_plot(star_id, flat_samples, blobs_df,
     ax_top.axvline(mh_obs, color='0.25', lw=1.4, ls='--')
 
     # ── Errorbar points at obs [M/H] ──────────────────────────────────────────
-    # Inferred point: median + 16th/84th from samples within ±FEH_WINDOW of mh_obs
+    # Inferred point: median + asymmetric 1-sigma from samples within ±FEH_WINDOW
     _feh_mask = (feh >= mh_obs - BESTFIT_FEH_WINDOW) & (feh <= mh_obs + BESTFIT_FEH_WINDOW)
     _inf_med = age_med  # fallback to global median if window is empty
     if _feh_mask.sum() >= 5:
@@ -415,23 +415,17 @@ def save_banana_plot(star_id, flat_samples, blobs_df,
         ax_main.errorbar(
             mh_obs, _inf_med,
             yerr=[[_inf_med - _inf_lo], [_inf_hi - _inf_med]],
-            xerr=e_mh_obs,
             fmt='o', color='steelblue', ms=7, lw=1.8,
             capsize=4, zorder=5, label='Inferred',
         )
 
-    # APOKASC point: shifted +0.05 dex right so it doesn't overlap inferred point
-    _APOKASC_X_OFFSET = 0.05
+    # APOKASC point: large star marker, no error bars
     comp_label = None
     if np.isfinite(aux_value):
         comp_label = f'APOKASC: {aux_value:.1f} Gyr'
-        _yerr = [[e_int_age], [e_int_age]] if np.isfinite(e_int_age) else None
-        ax_main.errorbar(
-            mh_obs + _APOKASC_X_OFFSET, aux_value,
-            yerr=_yerr,
-            xerr=e_mh_obs,
-            fmt='s', color='k', ms=7, lw=1.8,
-            capsize=4, zorder=5, label='APOKASC',
+        ax_main.plot(
+            mh_obs, aux_value,
+            '*', color='k', ms=14, zorder=5, label='APOKASC',
         )
 
     ax_main.set_xlabel('[Fe/H] assumed', fontsize=11)
