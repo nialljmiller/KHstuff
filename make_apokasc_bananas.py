@@ -297,7 +297,9 @@ def make_initial_positions(star_row, bounds, n_walkers, rng):
 # ── Per-star banana plot ──────────────────────────────────────────────────────
 def save_banana_plot(star_id, flat_samples, blobs_df,
                      teff_obs, lum_obs, logg_obs, mh_obs,
-                     aux_value, stellar_class):
+                     aux_value, stellar_class,
+                     alpha_fe=0.0, int_mass=float('nan'), e_teff=float('nan'),
+                     acc=float('nan')):
     safe_id = star_id.replace('/', '_')
 
     class_color = {'RGB': 'steelblue', 'clump': 'seagreen', 'unknown': 'grey'}
@@ -346,6 +348,29 @@ def save_banana_plot(star_id, flat_samples, blobs_df,
     ax_empty = fig.add_subplot(gs[0, 1])
     ax_empty.axis('off')
 
+    # ── Top-right info box: all fundamental parameters ────────────────────────
+    info_lines = [
+        f"star_id:      {star_id}",
+        f"class:        {stellar_class}",
+        f"Teff:         {teff_obs:.0f} K",
+        f"e_Teff:       {e_teff:.0f} K" if np.isfinite(e_teff) else "e_Teff:       —",
+        f"Logg:         {logg_obs:.3f} cgs",
+        f"Lum:          {lum_obs:.3f} log L/Lsun",
+        f"[Fe/H] obs:   {mh_obs:.3f}",
+        f"[alpha/Fe]:   {alpha_fe:.2f}",
+        f"Mass:         {int_mass:.3f} Msun" if np.isfinite(int_mass) else "Mass:         —",
+        f"IntAge:       {aux_value:.2f} Gyr" if np.isfinite(aux_value) else "IntAge:       —",
+        f"accept. frac: {acc:.3f}" if np.isfinite(acc) else "accept. frac: —",
+    ]
+    ax_empty.text(
+        0.98, 0.95, '\n'.join(info_lines),
+        transform=ax_empty.transAxes,
+        ha='right', va='top',
+        fontsize=8.5, family='monospace',
+        bbox=dict(boxstyle='round,pad=0.4', facecolor='#f5f5f5',
+                  edgecolor='#aaaaaa', alpha=0.9),
+    )
+
     # ── Main banana: median relation with 16th–84th percentile band ──────────
     n_feh_bins = int(np.clip(np.sqrt(len(feh)), 18, 36))
     feh_bins = np.linspace(feh_min, feh_max, n_feh_bins)
@@ -385,8 +410,9 @@ def save_banana_plot(star_id, flat_samples, blobs_df,
     comp_label = None
     if np.isfinite(aux_value):
         comp_label = f'APOKASC: {aux_value:.1f} Gyr'
-        ax_main.axhline(aux_value, color='crimson', lw=2.0, ls='--', zorder=2,
-                        label=comp_label)
+        _aline = ax_main.axhline(aux_value, color='crimson', lw=2.0, ls='--', zorder=2,
+                                  label=comp_label)
+        _aline._apokasc_line = True
 
     ax_main.set_xlabel('[Fe/H] assumed', fontsize=11)
     ax_main.set_ylabel('Age inferred (Gyr)', fontsize=11)
@@ -451,7 +477,8 @@ def save_banana_plot(star_id, flat_samples, blobs_df,
     ax_hist.axhline(age_lo,  color='steelblue', lw=1.2, ls='--', label='Inferred 16-84th pct')
     ax_hist.axhline(age_hi,  color='steelblue', lw=1.2, ls='--')
     if comp_label is not None:
-        ax_hist.axhline(aux_value, color='crimson', lw=2.0, ls='--', label=comp_label)
+        _hline = ax_hist.axhline(aux_value, color='crimson', lw=2.0, ls='--', label=comp_label)
+        _hline._apokasc_line = True
 
     ax_hist.set_xlabel(r'$N$ samples', fontsize=11)
     ax_hist.set_ylabel('Age (Gyr)', fontsize=11)
@@ -463,29 +490,25 @@ def save_banana_plot(star_id, flat_samples, blobs_df,
                    
     n_eff = mask.sum()
 
-    # ── Check: does APOKASC age intersect within 10% of banana at obs [M/H]? ──
-    # Within banana  = APOKASC age between 16th and 84th pct of our posterior.
-    # Within 10%     = within 10% of the banana width beyond either edge.
-    qc_str = ""
+    # ── Only plot APOKASC age line if it falls within the banana ─────────────
     _age_obs = age[(feh >= mh_obs - 0.15) & (feh <= mh_obs + 0.15)]
+    _show_apokasc = False
     if np.isfinite(aux_value) and len(_age_obs) >= 10:
-        b_lo  = float(np.percentile(_age_obs, 16))
-        b_hi  = float(np.percentile(_age_obs, 84))
-        width = b_hi - b_lo
-        tol   = 0.10 * width
-        if b_lo <= aux_value <= b_hi:
-            qc_str = "[APOKASC age within banana]"
-        elif (b_lo - tol) <= aux_value <= (b_hi + tol):
-            qc_str = "[APOKASC age within 10% of banana]"
-        else:
-            qc_str = "[APOKASC age OUTSIDE banana]"
+        b_lo = float(np.percentile(_age_obs, 16))
+        b_hi = float(np.percentile(_age_obs, 84))
+        _show_apokasc = (b_lo <= aux_value <= b_hi)
+    if not _show_apokasc:
+        # Remove the APOKASC line if it was already drawn
+        for line in ax_main.lines[:]:
+            if hasattr(line, '_apokasc_line') and line._apokasc_line:
+                line.remove()
+        for line in ax_hist.lines[:]:
+            if hasattr(line, '_apokasc_line') and line._apokasc_line:
+                line.remove()
 
-    fig.subplots_adjust(top=0.90)
+    fig.subplots_adjust(top=0.93)
     fig.suptitle(
-        f"{star_id}  [{stellar_class}]\n"
-        f"Teff={teff_obs:.0f} K   logg={logg_obs:.2f}   lum={lum_obs:.2f}   "
-        f"obs[M/H]={mh_obs:.2f}   N_samples={n_eff:,}\n"
-        + (qc_str if qc_str else ""),
+        f"{star_id}  [{stellar_class}]   N_samples={n_eff:,}",
         fontsize=10, fontweight='bold', y=0.99
     )
 
@@ -598,7 +621,8 @@ def run_star(star_row, jtgrid, bounds):
     save_banana_plot(
         star_id, flat_samples, blobs_df,
         teff_obs, lum_obs, logg_obs, mh_obs,
-        aux_value, stellar_class
+        aux_value, stellar_class,
+        alpha_fe=0.0, int_mass=int_mass, e_teff=e_teff, acc=acc,
     )
     print(f"  Plot saved: results/apokasc/plots/{safe_id}.png")
 
@@ -808,6 +832,10 @@ def replot_all_chains():
             res['star_id'], flat_samples, blobs_df,
             res['teff_obs'], res['lum_obs'], res['logg_obs'], res['mh_obs'],
             aux_value, res['stellar_class'],
+            alpha_fe=res.get('alpha_fe', 0.0),
+            int_mass=res.get('int_mass', float('nan')),
+            e_teff=res.get('e_teff', float('nan')),
+            acc=res.get('acceptance_fraction', float('nan')),
         )
         print(f"  [{i+1}/{len(chain_files)}] {res['star_id']}")
     print("Replot done.")
