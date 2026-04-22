@@ -363,7 +363,7 @@ def save_banana_plot(star_id, flat_samples, blobs_df,
         f"accept. frac: {acc:.3f}" if np.isfinite(acc) else "accept. frac: —",
     ]
     ax_empty.text(
-        0.98, 0.95, '\n'.join(info_lines),
+        0.99, 0.95, '\n'.join(info_lines),
         transform=ax_empty.transAxes,
         ha='right', va='top',
         fontsize=8.5, family='monospace',
