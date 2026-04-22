@@ -410,7 +410,7 @@ def save_banana_plot(star_id, flat_samples, blobs_df,
     comp_label = None
     if np.isfinite(aux_value):
         comp_label = f'APOKASC: {aux_value:.1f} Gyr'
-        _aline = ax_main.axhline(aux_value, color='crimson', lw=2.0, ls='--', zorder=2,
+        _aline = ax_main.axhline(aux_value, color='crimson', lw=2.0, ls='--', zorder=3,
                                   label=comp_label)
         _aline._apokasc_line = True
 
@@ -477,7 +477,7 @@ def save_banana_plot(star_id, flat_samples, blobs_df,
     ax_hist.axhline(age_lo,  color='steelblue', lw=1.2, ls='--', label='Inferred 16-84th pct')
     ax_hist.axhline(age_hi,  color='steelblue', lw=1.2, ls='--')
     if comp_label is not None:
-        _hline = ax_hist.axhline(aux_value, color='crimson', lw=2.0, ls='--', label=comp_label)
+        _hline = ax_hist.axhline(aux_value, color='crimson', lw=2.0, ls='--', label=comp_label, zorder = 3)
         _hline._apokasc_line = True
 
     ax_hist.set_xlabel(r'$N$ samples', fontsize=11)
