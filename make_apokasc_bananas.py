@@ -361,19 +361,25 @@ def save_banana_plot(star_id, flat_samples, blobs_df,
     ax_empty = fig.add_subplot(gs[0, 1])
     ax_empty.axis('off')
 
-    # ── Top-right info box: all fundamental parameters ────────────────────────
+    # ── Top-right info box ────────────────────────────────────────────────────
+    e_teff_str   = f"{e_teff:.0f} K"      if np.isfinite(e_teff)    else "—"
+    mass_str     = f"{int_mass:.3f} Msun" if np.isfinite(int_mass)  else "—"
+    intage_str   = f"{aux_value:.2f} Gyr" if np.isfinite(aux_value) else "—"
+    acc_str      = f"{acc:.3f}"           if np.isfinite(acc)       else "—"
+    if np.isfinite(aux_value) and np.isfinite(e_int_age_hi) and np.isfinite(e_int_age_lo):
+        intage_str = f"{aux_value:.2f} +{e_int_age_hi:.2f} / -{e_int_age_lo:.2f} Gyr"
+
     info_lines = [
-        f"star_id:      {star_id}",
-        f"class:        {stellar_class}",
-        f"Teff:         {teff_obs:.0f} K",
-        f"e_Teff:       {e_teff:.0f} K" if np.isfinite(e_teff) else "e_Teff:       —",
-        f"Logg:         {logg_obs:.3f} cgs",
-        f"Lum:          {lum_obs:.3f} log L/Lsun",
-        f"[Fe/H] obs:   {mh_obs:.3f}",
-        f"[alpha/Fe]:   {alpha_fe:.2f}",
-        f"Mass:         {int_mass:.3f} Msun" if np.isfinite(int_mass) else "Mass:         —",
-        f"IntAge:       {aux_value:.2f} Gyr" if np.isfinite(aux_value) else "IntAge:       —",
-        f"accept. frac: {acc:.3f}" if np.isfinite(acc) else "accept. frac: —",
+        f"ID:       {star_id}",
+        f"Class:    {stellar_class}",
+        f"Teff:     {teff_obs:.0f} ± {e_teff_str}",
+        f"Logg:     {logg_obs:.3f} cgs",
+        f"Lum:      {lum_obs:.3f} log L/Lsun",
+        f"[Fe/H]:   {mh_obs:.3f}",
+        f"[a/Fe]:   {alpha_fe:.2f}",
+        f"Mass:     {mass_str}",
+        f"IntAge:   {intage_str}",
+        f"Acc frac: {acc_str}",
     ]
     ax_empty.text(
         0.98, 0.95, '\n'.join(info_lines),
