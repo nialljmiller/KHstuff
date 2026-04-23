@@ -215,6 +215,8 @@ def load_apokasc(path='MeridithRomanApokascCalibLtest5ns3L.out'):
         'Fe/H': 'mh_obs',
         'Teff_err': 'e_teff_obs',
         'IntAge': 'int_age',
+        'IntAge_err_hi': 'e_int_age_hi',
+        'IntAge_err_lo': 'e_int_age_lo',
         'IntAge_err': 'e_int_age',
         'IntMass': 'int_mass',
         'C/N': 'cn_class',
@@ -227,6 +229,10 @@ def load_apokasc(path='MeridithRomanApokascCalibLtest5ns3L.out'):
         raw['e_mh_obs'] = 0.1
     if 'e_int_age' not in raw.columns:
         raw['e_int_age'] = np.nan
+    if 'e_int_age_hi' not in raw.columns:
+        raw['e_int_age_hi'] = np.nan
+    if 'e_int_age_lo' not in raw.columns:
+        raw['e_int_age_lo'] = np.nan
 
     bad = (
         (raw['int_age'] <= 0)
@@ -306,7 +312,7 @@ def save_banana_plot(star_id, flat_samples, blobs_df,
                      aux_value, stellar_class,
                      alpha_fe=0.0, int_mass=float('nan'), e_teff=float('nan'),
                      acc=float('nan'),
-                     e_mh_obs=0.1, e_int_age=float('nan'),
+                     e_mh_obs=0.1, e_int_age_hi=float('nan'), e_int_age_lo=float('nan'),
                      out_dir='results/apokasc/plots'):
     safe_id = star_id.replace('/', '_')
     os.makedirs(out_dir, exist_ok=True)
@@ -419,14 +425,23 @@ def save_banana_plot(star_id, flat_samples, blobs_df,
             capsize=4, zorder=5, label='Inferred',
         )
 
-    # APOKASC point: large star marker, no error bars
+    # APOKASC point: large star marker with asymmetric error bars when available
     comp_label = None
     if np.isfinite(aux_value):
         comp_label = f'APOKASC: {aux_value:.1f} Gyr'
-        ax_main.plot(
-            mh_obs, aux_value,
-            '*', color='k', ms=14, zorder=5, label='APOKASC',
-        )
+        _has_yerr = np.isfinite(e_int_age_hi) and np.isfinite(e_int_age_lo)
+        if _has_yerr:
+            ax_main.errorbar(
+                mh_obs, aux_value,
+                yerr=[[e_int_age_lo], [e_int_age_hi]],
+                fmt='*', color='k', ms=14, lw=1.8,
+                capsize=4, zorder=5, label='APOKASC',
+            )
+        else:
+            ax_main.plot(
+                mh_obs, aux_value,
+                '*', color='k', ms=14, zorder=5, label='APOKASC',
+            )
 
     ax_main.set_xlabel('[Fe/H] assumed', fontsize=11)
     ax_main.set_ylabel('Age inferred (Gyr)', fontsize=11)
@@ -523,7 +538,8 @@ def run_star(star_row, jtgrid, bounds):
     mh_obs = float(star_row['mh_obs'])
     e_teff = float(star_row['e_teff_obs'])
     int_age = float(star_row['int_age']) if 'int_age' in star_row else np.nan
-    e_int_age = float(star_row['e_int_age']) if 'e_int_age' in star_row else np.nan
+    e_int_age_hi = float(star_row['e_int_age_hi']) if 'e_int_age_hi' in star_row else np.nan
+    e_int_age_lo = float(star_row['e_int_age_lo']) if 'e_int_age_lo' in star_row else np.nan
     int_mass = float(star_row['int_mass']) if 'int_mass' in star_row else np.nan
     e_mh_obs = float(star_row['e_mh_obs']) if 'e_mh_obs' in star_row else 0.1
     aux_value = int_age if np.isfinite(int_age) else 999.0
@@ -622,7 +638,7 @@ def run_star(star_row, jtgrid, bounds):
         teff_obs, lum_obs, logg_obs, mh_obs,
         aux_value, stellar_class,
         alpha_fe=0.0, int_mass=int_mass, e_teff=e_teff, acc=acc,
-        e_mh_obs=e_mh_obs, e_int_age=e_int_age,
+        e_mh_obs=e_mh_obs, e_int_age_hi=e_int_age_hi, e_int_age_lo=e_int_age_lo,
     )
     print(f"  Plot saved: results/apokasc/plots/{safe_id}.png")
 
@@ -637,7 +653,8 @@ def run_star(star_row, jtgrid, bounds):
         'e_teff': e_teff,
         'e_mh_obs': e_mh_obs,
         'int_age': int_age,
-        'e_int_age': e_int_age,
+        'e_int_age_hi': e_int_age_hi,
+        'e_int_age_lo': e_int_age_lo,
         'int_mass': int_mass,
         'flat_samples': flat_samples,
         'blobs_df': blobs_df,
@@ -994,7 +1011,8 @@ def replot_all_chains():
             e_teff=res.get('e_teff', float('nan')),
             acc=res.get('acceptance_fraction', float('nan')),
             e_mh_obs=res.get('e_mh_obs', 0.1),
-            e_int_age=res.get('e_int_age', float('nan')),
+            e_int_age_hi=res.get('e_int_age_hi', float('nan')),
+            e_int_age_lo=res.get('e_int_age_lo', float('nan')),
             out_dir=plots_dir,
         )
         print(f"  [{i+1}/{len(chain_files)}] {res['star_id']}")
@@ -1049,7 +1067,8 @@ def replot_best_fits():
             e_teff=res.get('e_teff', float('nan')),
             acc=res.get('acceptance_fraction', float('nan')),
             e_mh_obs=res.get('e_mh_obs', 0.1),
-            e_int_age=res.get('e_int_age', float('nan')),
+            e_int_age_hi=res.get('e_int_age_hi', float('nan')),
+            e_int_age_lo=res.get('e_int_age_lo', float('nan')),
             out_dir=bestfit_dir,
         )
         if png_path:
