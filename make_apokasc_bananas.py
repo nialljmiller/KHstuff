@@ -378,7 +378,7 @@ def save_banana_plot(star_id, flat_samples, blobs_df,
         f"[Fe/H]:   {mh_obs:.3f}",
         f"[a/Fe]:   {alpha_fe:.2f}",
         f"Mass:     {mass_str}",
-        f"IntAge:   {intage_str}",
+        f"APOKASC AGE:   {intage_str}",
         f"Acc frac: {acc_str}",
     ]
     ax_empty.text(
