@@ -199,17 +199,15 @@ def save_banana_plot(star_id, flat_samples, blobs_df,
 
     # ── SM age distribution as a scaled KDE on the same panel ────────────────
     # Scaled to match the peak of our histogram so the shapes are comparable.
-    if _sm_ages_all is not None and len(_sm_ages_all) > 5:
-        sm_in_range = _sm_ages_all[(_sm_ages_all >= y_lo) & (_sm_ages_all <= y_hi)]
-        if len(sm_in_range) > 5:
-            sm_kde = gaussian_kde(sm_in_range, bw_method='scott')
-            sm_pdf = sm_kde(_age_grid)  # _age_grid runs y_lo to y_hi
-            # Scale so the SM KDE peak matches our histogram peak
-            if sm_pdf.max() > 0:
-                sm_pdf_scaled = sm_pdf / sm_pdf.max() * x_max
-                ax_hist.plot(sm_pdf_scaled, _age_grid,
-                             color='tomato', lw=2.0, ls='-',
-                             label='Stone-Martinez (2025)', zorder=4)
+    sm_in_range = _sm_ages_all[(_sm_ages_all >= y_lo) & (_sm_ages_all <= y_hi)]
+
+    sm_kde = gaussian_kde(sm_in_range, bw_method='scott')
+    sm_pdf = sm_kde(_age_grid)  # _age_grid runs y_lo to y_hi
+
+    sm_pdf_scaled = sm_pdf / sm_pdf.max() * x_max
+    ax_hist.plot(sm_pdf_scaled, _age_grid,
+                 color='purple', lw=2.0, ls='-',
+                 label='Stone-Martinez (2025)', zorder=4)
 
     ax_hist.set_xlim(0.0, x_max * 1.25)  # extra room for SM curve label
     ax_hist.axhline(_inf_med, color='steelblue', lw=1.5, ls='--', zorder=2)
@@ -273,9 +271,12 @@ if __name__ == '__main__':
         chain_files = sorted(f for f in os.listdir(CHAIN_DIR) if f.endswith('.pkl'))
         print(f"Replotting {len(chain_files)} chains...")
         for i, fname in enumerate(chain_files):
-            pkl_path = os.path.join(CHAIN_DIR, fname)
-            png = plot_from_pkl(pkl_path)
-            star_id = fname.replace('.pkl', '')
-            status = png if png else 'SKIPPED'
-            print(f"  [{i+1}/{len(chain_files)}] {star_id}  →  {status}")
+            try:
+                pkl_path = os.path.join(CHAIN_DIR, fname)
+                png = plot_from_pkl(pkl_path)
+                star_id = fname.replace('.pkl', '')
+                status = png if png else 'SKIPPED'
+                print(f"  [{i+1}/{len(chain_files)}] {star_id}  →  {status}")
+            except:
+                pass
         print("Done.")
